@@ -5,7 +5,7 @@ from app.config import Settings, get_settings
 
 def test_config_loads_from_env(mock_env: None) -> None:
     get_settings.cache_clear()
-    settings = Settings()
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.FEISHU_APP_ID == "test_app_id"
     assert settings.FEISHU_APP_SECRET == "test_app_secret"
     assert settings.DOUBAO_MODEL_PRO == "ep-20241230000000-xxxxx"
@@ -16,7 +16,7 @@ def test_config_loads_from_env(mock_env: None) -> None:
 
 def test_config_defaults(mock_env: None) -> None:
     get_settings.cache_clear()
-    settings = Settings()
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.FEISHU_DOMAIN == "https://open.feishu.cn"
     assert settings.REDIS_URL == "redis://localhost:6379/0"
     assert settings.CHROMA_PORT == 8001
