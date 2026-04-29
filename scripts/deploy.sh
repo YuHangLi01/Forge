@@ -8,6 +8,8 @@
 #   - deploy user has NOPASSWD sudo for: systemctl restart forge-api forge-worker
 set -euo pipefail
 
+export PATH="$HOME/.local/bin:$PATH"
+
 REPO_DIR="/opt/forge"
 HEALTH_URL="http://127.0.0.1:8000/healthz"
 
