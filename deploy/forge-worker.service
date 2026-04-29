@@ -1,0 +1,19 @@
+[Unit]
+Description=Forge Celery Worker (fast + slow queues)
+After=network.target redis-server.service postgresql.service
+Wants=redis-server.service postgresql.service
+
+[Service]
+Type=simple
+User=forge
+Group=forge
+WorkingDirectory=/opt/forge
+EnvironmentFile=/opt/forge/.env
+ExecStart=/home/forge/.local/bin/uv run celery -A app.tasks.celery_app worker -Q fast,slow --loglevel=info
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
