@@ -25,4 +25,9 @@ celery_app.conf.update(
         "app.tasks.card_tasks.*": {"queue": "fast"},
         "app.tasks.echo_tasks.*": {"queue": "fast"},
     },
+    imports=(
+        "app.tasks.message_tasks",
+        "app.tasks.card_tasks",
+        "app.tasks.echo_tasks",
+    ),
 )
