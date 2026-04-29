@@ -93,9 +93,20 @@ make lint                             # ruff + mypy strict
 make test                             # pytest, ≥70% coverage required
 ```
 
-End-to-end smoke (after webhook URL is registered in Feishu):
-- Send "你好" to the bot → reply within 10s
-- Send a voice message → reply within 15s
+---
+
+## Stage 1 Demo
+
+Two end-to-end scenarios validate the full Stage 1 pipeline:
+
+| # | User action | Expected result | Pipeline exercised |
+|---|---|---|---|
+| 1 | Send `你好` (text) to the bot in Feishu | Doubao-generated Chinese reply within **10 s** | webhook → signature → Celery → Doubao → reply |
+| 2 | Send a voice message to the bot | Reply addressing the spoken content within **15 s** | scenario 1 + Volc ASR + Feishu resource download |
+
+Both require: a publicly reachable HTTPS URL (Feishu refuses HTTP), a Feishu custom app with bot capability + 5 IM scopes, Doubao Ark endpoints (Pro + Lite tier), and Volc one-shot ASR credentials (scenario 2 only).
+
+Step-by-step bot configuration, scope list, event subscription, key checklist, live monitoring commands, and per-symptom troubleshooting live in **[docs/feishu-app-setup.md](docs/feishu-app-setup.md)**.
 
 ---
 
