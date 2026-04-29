@@ -26,7 +26,8 @@ echo "==> [deploy] alembic upgrade head"
 uv run alembic upgrade head
 
 echo "==> [deploy] systemctl restart forge-api forge-worker"
-sudo systemctl restart forge-api forge-worker
+sudo systemctl restart forge-api
+sudo systemctl restart forge-worker
 
 echo "==> [deploy] health check"
 for i in 1 2 3 4 5; do
