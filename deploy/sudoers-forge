@@ -1,0 +1,3 @@
+# Install: sudo cp deploy/sudoers-forge /etc/sudoers.d/forge && sudo chmod 440 /etc/sudoers.d/forge
+# Allows the deploy user to restart Forge services without a password prompt.
+forge ALL=(ALL) NOPASSWD: /bin/systemctl restart forge-api, /bin/systemctl restart forge-worker, /bin/systemctl restart forge-chromadb, /bin/journalctl -u forge-api *, /bin/journalctl -u forge-worker *

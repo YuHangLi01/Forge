@@ -1,0 +1,17 @@
+[Unit]
+Description=Forge ChromaDB
+After=network.target
+
+[Service]
+Type=simple
+User=forge
+Group=forge
+WorkingDirectory=/opt/forge
+ExecStart=/home/forge/.local/bin/uv run chroma run --host 127.0.0.1 --port 8001 --path .chroma_data
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
