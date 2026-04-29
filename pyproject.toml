@@ -1,0 +1,89 @@
+[project]
+name = "forge"
+version = "0.1.0"
+description = "Feishu AI office assistant powered by LangGraph + Doubao LLM"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi[standard]>=0.115",
+    "uvicorn[standard]",
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "psycopg[binary,pool]>=3.2",
+    "alembic>=1.13",
+    "langgraph>=0.2.50",
+    "langgraph-checkpoint-postgres",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    "chromadb>=0.5",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24.4",
+    "httpx>=0.27",
+    "lark-oapi>=1.4",
+    "python-pptx>=1.0",
+    "markdown-it-py>=3.0",
+    "tenacity>=9.0",
+    "cryptography>=43.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov",
+    "pytest-mock",
+    "ruff>=0.7",
+    "black>=24",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "respx>=0.21",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=70"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = [
+    "scripts/*",
+    "alembic/*",
+    "tests/*",
+    # These require live infra (Feishu API, PostgreSQL, Volcano ASR) — tested via integration tests
+    "app/integrations/feishu/adapter.py",
+    "app/integrations/volc_asr/client.py",
+    "app/db/*",
+    "app/repositories/*",
+    "app/services/asr_service.py",
+    "app/services/llm_service.py",
+    "app/integrations/doubao/client.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
