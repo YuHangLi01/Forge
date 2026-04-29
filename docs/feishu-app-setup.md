@@ -5,7 +5,7 @@ This document covers everything needed to run the two Stage 1 demo scenarios end
 | # | User action | Expected result | Pipeline exercised |
 |---|---|---|---|
 | 1 | Send `你好` (text) to the bot | Doubao-generated Chinese reply within **10 s** | webhook → signature → Celery → Doubao → reply |
-| 2 | Send a voice message to the bot | Reply addressing the spoken content within **15 s** | scenario 1 + Volc ASR + Feishu resource download |
+| 2 | Send a voice message to the bot | Reply addressing the spoken content within **15 s** | scenario 1 + Feishu native STT + Feishu resource download |
 
 ## Prerequisites
 
@@ -14,9 +14,7 @@ This document covers everything needed to run the two Stage 1 demo scenarios end
   - Production: a real domain whose DNS A-record points at the ECS public IP, plus `certbot --nginx`. See [setup.md](setup.md).
   - Quick test: `ngrok http 8000` (gives you `https://<random>.ngrok.io`) — runs from any machine that can reach your FastAPI.
   - No-domain fallback: a free wildcard like `sslip.io` (e.g. `39-106-223-136.sslip.io`) + certbot — minutes to set up, no DNS account needed.
-- A [Volcano Engine](https://www.volcengine.com/) account with **two** services activated:
-  - **Ark / 火山方舟** → Doubao LLM endpoints
-  - **One-shot ASR / 一句话语音识别** → voice transcription (only required for scenario 2)
+- A [Volcano Engine](https://www.volcengine.com/) account with **Ark / 火山方舟** activated for Doubao LLM endpoints. Voice transcription uses Feishu's native STT (no extra vendor) — see step 3 below.
 
 ---
 
@@ -41,6 +39,7 @@ Minimum scope for both demo scenarios:
 | `im:message.group_at_msg:readonly` | Receive @-mentions in group chats |
 | `im:message.p2p_msg:readonly` | Receive direct messages from users |
 | `im:resource` | Download voice/file/image attachments — **required for scenario 2** |
+| `speech_to_text:speech` | Call Feishu's native STT to transcribe voice — **required for scenario 2** |
 | `contact:user.base:readonly` | Resolve sender open_id → user info (used in logging) |
 
 Tick these → **Save** at the bottom. Some scopes need admin approval; for development apps you can self-approve as the app creator.
@@ -91,13 +90,13 @@ Both scenarios reply via Doubao.
    - One pointing at a Doubao Lite model (e.g., `Doubao-lite-4k`) → another endpoint id → `DOUBAO_MODEL_LITE`
 4. Set `DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3` (region default; **no trailing `/v1`** — the LangChain OpenAI client appends it automatically; see [troubleshooting.md](troubleshooting.md))
 
-## 8. Volc ASR credentials (only for scenario 2)
+## 8. Voice transcription (scenario 2)
 
-1. Open [Volcano Speech / 火山引擎语音技术](https://console.volcengine.com/speech) → enable **One-shot Speech Recognition / 一句话识别**
-2. Note the **App ID** → `.env` as `VOLC_ASR_APP_ID`
-3. **Access Token** → `.env` as `VOLC_ASR_ACCESS_TOKEN`
+Stage 1 uses Feishu's **native** speech-to-text — no extra vendor required. The app simply needs the `speech_to_text:speech` scope (already in step 3) plus `im:resource` to download the voice file. Both are toggled via the Feishu console; `.env` doesn't need new fields.
 
-If you skip these, scenario 2 will fail to transcribe (you'll see `ASRError` in `journalctl -u forge-worker`); scenario 1 still works.
+If `speech_to_text:speech` is missing, `forge-worker` logs `ASRError: feishu_stt code=...` and scenario 2 silently degrades (the bot answers with an empty-prompt fallback). Scenario 1 keeps working.
+
+> **Volc fallback (deprecated)**: an alternate `VolcASRClient` implementation lives at `app/integrations/volc_asr/`. Switch back by passing it to `ASRService(asr=VolcASRClient())` and re-adding `VOLC_ASR_APP_ID` / `VOLC_ASR_ACCESS_TOKEN` to `.env`. Slated for removal once Feishu STT proves stable.
 
 ---
 
@@ -118,9 +117,9 @@ DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 DOUBAO_MODEL_PRO=ep-20241225xxxxxx-xxxxx
 DOUBAO_MODEL_LITE=ep-20241225yyyyyy-yyyyy
 
-# Volc ASR — from step 8 (scenario 2 only)
-VOLC_ASR_APP_ID=12345678
-VOLC_ASR_ACCESS_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Scenario 2 (voice) needs no new fields — Feishu native STT reuses
+# FEISHU_APP_ID / FEISHU_APP_SECRET above. The deprecated VOLC_ASR_*
+# fields are only relevant if you switch ASRService back to VolcASRClient.
 ```
 
 After editing, restart the workers so they pick up the new env:
@@ -177,9 +176,9 @@ forge-worker: feishu_reply_text message_id=om_... ok=true
 |---|---|---|
 | URL verification 401 in Feishu console | Encrypt Key / Verification Token in `.env` differ from console | Refresh both in console, paste into `.env`, `systemctl restart forge-api`, retry **Save** in console |
 | Bot doesn't reply, no log activity | Bot not added to chat / not released to your account | Steps 5 + 6 above |
-| `forge-worker` logs `ASRError: 401` | `VOLC_ASR_*` wrong or one-shot ASR not activated | Re-check step 8 |
+| `forge-worker` logs `ASRError: feishu_stt code=...` | `speech_to_text:speech` scope not granted, or app not re-released after granting it | Re-check step 3, re-publish app in step 6 |
 | `forge-worker` logs `LLMError: 401` | `DOUBAO_BASE_URL` has trailing `/v1` | Remove it, restart worker |
 | Reply is "抱歉，处理出错" | Exception in worker; check `journalctl -u forge-worker -n 100` | Look at the traceback — usually missing scope or wrong endpoint id |
-| Voice scenario silent reply | ASR returned empty; the worker still calls LLM with empty text | Check `journalctl` for `asr_text=""` — usually Volc rejected the audio format |
+| Voice scenario silent reply | Feishu STT returned empty (no speech detected); the worker still calls LLM with empty text | Check `journalctl` for `feishu_stt_ok chars=0` — usually audio too short or unsupported format |
 
 See also [troubleshooting.md](troubleshooting.md) for infrastructure-level issues.
