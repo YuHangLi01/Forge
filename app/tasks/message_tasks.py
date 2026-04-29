@@ -23,7 +23,6 @@ def handle_message_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  
 
 async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
     from app.integrations.feishu.adapter import FeishuAdapter
-    from app.integrations.volc_asr.client import VolcASRClient
     from app.services.asr_service import ASRService
     from app.services.echo_responder import EchoResponder
     from app.services.message_router import parse_message
@@ -31,7 +30,7 @@ async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
     msg = parse_message(payload)
 
     feishu = FeishuAdapter()
-    asr_svc = ASRService(feishu, VolcASRClient())
+    asr_svc = ASRService(feishu)  # defaults to FeishuASRClient (Stage 1)
     responder = EchoResponder()
 
     user_text = msg.text
