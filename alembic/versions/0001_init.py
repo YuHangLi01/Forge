@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.create_table(
         "tasks",
         sa.Column("task_id", sa.String(64), primary_key=True),
-        sa.Column("user_id", sa.String(64), nullable=False, index=True),
+        sa.Column("user_id", sa.String(64), nullable=False),
         sa.Column("chat_id", sa.String(64), nullable=False),
         sa.Column("status", sa.String(32), nullable=False, server_default="pending"),
         sa.Column("intent_json", postgresql.JSONB(), nullable=True),
