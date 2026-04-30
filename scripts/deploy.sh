@@ -16,7 +16,19 @@ HEALTH_URL="http://127.0.0.1:8000/healthz"
 cd "$REPO_DIR"
 
 echo "==> [deploy] git fetch + reset to origin/main"
-git fetch --prune origin main
+# Aliyun ↔ github.com TLS sometimes gets reset mid-handshake
+# (GnuTLS recv error -110); retry up to 3× with backoff.
+for attempt in 1 2 3; do
+  if git fetch --prune origin main; then
+    break
+  fi
+  if [ "$attempt" -eq 3 ]; then
+    echo "==> [deploy] git fetch failed after 3 attempts" >&2
+    exit 1
+  fi
+  echo "==> [deploy] git fetch attempt $attempt failed, retrying in $((attempt * 5))s…" >&2
+  sleep $((attempt * 5))
+done
 git reset --hard origin/main
 
 echo "==> [deploy] uv sync"
