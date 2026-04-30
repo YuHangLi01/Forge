@@ -30,7 +30,8 @@ def test_card_action_task_returns_received() -> None:
     from app.tasks.card_tasks import handle_card_action_task
 
     result = handle_card_action_task.apply(args=[{"action": "test"}]).get()
-    assert result["status"] == "received"
+    # Unknown action_kind → "unhandled" (stub replaced by real routing in T08)
+    assert result["status"] == "unhandled"
 
 
 def test_message_task_returns_received() -> None:

@@ -22,16 +22,59 @@ def handle_message_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  
 
 
 async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
-    from app.integrations.feishu.adapter import FeishuAdapter
-    from app.services.asr_service import ASRService
-    from app.services.echo_responder import EchoResponder
-    from app.services.intent_router import classify
+    from app.config import get_settings
     from app.services.message_router import parse_message
 
     msg = parse_message(payload)
 
+    if msg.message_type == "unsupported":
+        logger.info("unsupported_message_type", message_id=msg.message_id)
+        return {"status": "received", "message_type": "unsupported"}
+
+    settings = get_settings()
+    if settings.FORGE_USE_GRAPH:
+        return await _handle_via_graph(msg, payload)
+
+    return await _handle_stage1(msg)
+
+
+async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
+    """Stage 2: invoke the LangGraph agent pipeline."""
+    from app.graph import get_graph
+    from app.schemas.agent_state import make_agent_state
+
+    initial_state = make_agent_state(
+        user_id=msg.sender_user_id,
+        chat_id=msg.chat_id,
+        message_id=msg.message_id,
+    )
+    initial_state["raw_input"] = msg.text
+
+    if msg.message_type == "audio" and msg.file_key:
+        initial_state["attachments"] = [
+            {"type": "audio", "file_key": msg.file_key, "message_id": msg.message_id}
+        ]
+
+    config = {"configurable": {"thread_id": msg.message_id or msg.event_id}}
+    try:
+        graph = get_graph()
+        result = await graph.ainvoke(initial_state, config=config)
+        logger.info("graph_completed", message_id=msg.message_id, status=result.get("status"))
+        return {"status": "completed", "message_id": msg.message_id}
+    except Exception as exc:
+        logger.exception("graph_failed", message_id=msg.message_id, error=str(exc))
+        return {"status": "error", "error": str(exc)}
+
+
+async def _handle_stage1(msg: Any) -> dict[str, Any]:
+    """Stage 1: direct Celery → service calls (default path, FORGE_USE_GRAPH=False)."""
+    from app.integrations.feishu.adapter import FeishuAdapter
+    from app.services.asr_service import ASRService
+    from app.services.echo_responder import EchoResponder
+    from app.services.intent_router import classify
+
     feishu = FeishuAdapter()
-    asr_svc = ASRService(feishu)  # defaults to FeishuASRClient (Stage 1)
+    asr_svc = ASRService(feishu)
     responder = EchoResponder()
 
     user_text = msg.text
@@ -41,10 +84,6 @@ async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
         if not user_text:
             user_text = "[语音内容无法识别]"
 
-    if msg.message_type == "unsupported":
-        logger.info("unsupported_message_type", message_id=msg.message_id)
-        return {"status": "received", "message_type": "unsupported"}
-
     if not user_text.strip():
         return {"status": "received", "message_type": msg.message_type}
 
@@ -52,7 +91,7 @@ async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
     if intent == "generate_demo":
         from app.tasks.demo_tasks import handle_demo_request_task
 
-        handle_demo_request_task.delay(payload)
+        handle_demo_request_task.delay({"event": {"message": {}}, "header": {}})
         logger.info("demo_task_dispatched", message_id=msg.message_id, text=user_text)
         return {"status": "dispatched", "intent": "generate_demo"}
 

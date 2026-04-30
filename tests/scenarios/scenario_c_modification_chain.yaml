@@ -1,0 +1,61 @@
+# Scenario C: Create doc → modify section 2 → append with history context
+# Tests: full modification chain with modification_history accumulation
+name: scenario_c_modification_chain
+description: |
+  Full end-to-end test of the modification workflow:
+  Step A: Initial document is created (3 sections: 概述, 数据分析, 结论)
+  Step B: User says "把第2节改简洁" → doc_section_editor rewrites 数据分析
+  Step C: User says "刚才改的那段加上数据来源" → mod_intent_parser resolves scope
+           from modification_history, doc_section_editor appends 数据来源 note
+
+  Key assertions:
+  - After Step B: modification_history.length = 1, scope_identifier = "数据分析"
+  - After Step C: modification_history.length = 2, same scope_identifier
+  - Content of 数据分析 is longer after Step C than after Step B
+
+initial_doc:
+  doc_id: "test-doc-scenario-c"
+  title: "Q3复盘报告"
+  share_url: "https://feishu.cn/docx/test-doc-scenario-c"
+  sections:
+    - id: s0
+      title: "概述"
+      content_md: "概述内容，说明Q3整体背景。"
+      block_ids: []
+    - id: s1
+      title: "数据分析"
+      content_md: "初始数据内容，含DAU数据：日活120万，环比+12%，留存率42%。"
+      block_ids: []
+    - id: s2
+      title: "结论"
+      content_md: "结论内容，Q3超预期，Q4聚焦留存。"
+      block_ids: []
+
+step_b:
+  user_input: "把第2节改简洁"
+  mod_intent:
+    target: document
+    scope_type: specific_section
+    scope_identifier: "数据分析"
+    modification_type: rewrite
+    instruction: "简化数据分析，突出关键指标"
+  llm_new_content: "简化后的数据分析：DAU 120万，环比+12%。"
+  assertions:
+    modification_history_length: 1
+    scope_identifier: "数据分析"
+    content_contains: "DAU"
+
+step_c:
+  user_input: "刚才改的那段加上数据来源"
+  mod_intent:
+    target: document
+    scope_type: specific_section
+    scope_identifier: "数据分析"  # resolved by mod_intent_parser via history
+    modification_type: append
+    instruction: "在数据分析末尾追加数据来源说明"
+  llm_new_content: "简化后的数据分析：DAU 120万，环比+12%。\n\n数据来源：内部BI系统（2024-Q3）"
+  assertions:
+    modification_history_delta: 1  # delta returned by doc_section_editor (reducer adds)
+    scope_identifier: "数据分析"
+    content_contains: "数据来源"
+    content_longer_than_step_b: true

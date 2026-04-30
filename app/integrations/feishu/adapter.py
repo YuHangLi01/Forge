@@ -232,6 +232,29 @@ class FeishuAdapter:
         _check_response(resp, "batch_update_blocks")
         return [c.block_id for c in (resp.data.children or []) if c.block_id]
 
+    async def delete_blocks(self, doc_token: str, block_ids: list[str]) -> None:
+        """Delete specific blocks from a document by block_id.
+
+        Uses DELETE /open-apis/docx/v1/documents/{doc}/blocks/{block_id}
+        for each block.  Errors are logged but not re-raised so that a partial
+        failure doesn't abort the patch_section flow.
+        """
+        from lark_oapi.api.docx.v1 import DeleteDocumentBlockRequest
+
+        for block_id in block_ids:
+            try:
+                req = (
+                    DeleteDocumentBlockRequest.builder()
+                    .document_id(doc_token)
+                    .block_id(block_id)
+                    .build()
+                )
+                resp = await asyncio.to_thread(self._client.docx.v1.document_block.delete, req)
+                _check_response(resp, "delete_block")
+                logger.debug("delete_block_ok", doc_token=doc_token, block_id=block_id)
+            except Exception:
+                logger.exception("delete_block_failed", doc_token=doc_token, block_id=block_id)
+
     async def get_document_blocks(self, doc_token: str) -> list[dict[str, Any]]:
         """Read all blocks from a document."""
         from lark_oapi.api.docx.v1 import ListDocumentBlockRequest

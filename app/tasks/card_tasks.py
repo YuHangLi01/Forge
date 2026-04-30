@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 from typing import Any
 
 import structlog
@@ -11,4 +14,62 @@ logger = structlog.get_logger(__name__)
 def handle_card_action_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
     """Handle Feishu interactive card button clicks."""
     logger.info("card_action_received", payload=payload)
-    return {"status": "received"}
+    return asyncio.run(_handle_card_action_async(payload))
+
+
+async def _handle_card_action_async(payload: dict[str, Any]) -> dict[str, Any]:
+    action: dict[str, Any] = payload.get("event", {}).get("action", {}) or {}
+    value: dict[str, Any] = action.get("value", {}) or {}
+    form_value: dict[str, Any] = action.get("form_value", {}) or {}
+
+    action_kind = value.get("action", "")
+
+    if action_kind == "clarify_submit":
+        return await _handle_clarify_submit(value, form_value)
+
+    logger.warning("card_action_unhandled", action_kind=action_kind)
+    return {"status": "unhandled"}
+
+
+async def _handle_clarify_submit(
+    value: dict[str, Any],
+    form_value: dict[str, Any],
+) -> dict[str, Any]:
+    request_id: str = value.get("request_id", "")
+    thread_id: str = value.get("thread_id", "")
+    clarify_answer: str = form_value.get("clarify_answer", "").strip()
+
+    if not request_id or not thread_id:
+        logger.warning("clarify_submit_missing_ids", request_id=request_id, thread_id=thread_id)
+        return {"status": "invalid"}
+
+    from app.graph import get_graph
+
+    graph = get_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    # Stale request_id guard: check the current graph state
+    try:
+        current_state = await graph.aget_state(config)
+        pending = (current_state.values or {}).get("pending_user_action") or {}
+        if pending.get("request_id") != request_id:
+            logger.info(
+                "clarify_submit_stale",
+                expected=pending.get("request_id"),
+                received=request_id,
+            )
+            return {"status": "stale"}
+    except Exception:
+        logger.exception("clarify_stale_check_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+    # Inject the answer and clear the pending gate, resuming from clarify_resume
+    await graph.aupdate_state(
+        config,
+        {"clarify_answer": clarify_answer, "pending_user_action": None},
+        as_node="clarify_resume",
+    )
+    await graph.ainvoke(None, config=config)
+
+    logger.info("clarify_resumed", thread_id=thread_id, answer_len=len(clarify_answer))
+    return {"status": "resumed", "thread_id": thread_id}

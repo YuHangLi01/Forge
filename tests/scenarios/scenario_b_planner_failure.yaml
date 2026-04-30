@@ -1,0 +1,43 @@
+# Scenario B: Planner receives malformed LLM output → template plan degradation
+# Tests: planner fallback, plan preview card, cancel button flow
+name: scenario_b_planner_failure
+description: |
+  LLM planner returns malformed JSON on both attempts. System falls back to
+  the built-in template plan (doc_structure_gen → doc_content_gen → feishu_doc_write).
+  User then clicks Cancel → task transitions to cancelled.
+
+mocks:
+  llm_planner_attempt_1:
+    raw_output: "对不起，我无法生成有效的计划"  # not valid PlanSchema JSON
+  llm_planner_attempt_2:
+    raw_output: '{"steps": [{"node_name": "unknown_node"}]}'  # fails whitelist validation
+
+initial_state:
+  message_type: text
+  message_id: "om_test_scenario_b"
+  chat_id: "oc_test_chat_b"
+  user_id: "demo_user_b"
+  normalized_text: "帮我写一份年度总结文档"
+
+template_plan_assertion:
+  # After planner falls back, the template plan contains exactly these nodes in order
+  nodes:
+    - doc_structure_gen
+    - doc_content_gen
+    - feishu_doc_write
+
+cancel_flow:
+  # When user clicks "取消" in plan preview card
+  card_action:
+    action: plan_cancel
+    thread_id: "thread_test_scenario_b"
+  expected_status: cancelled
+
+assertions:
+  - path: status
+    equals: cancelled
+  # Template plan should have 3 steps
+  - path: plan.steps
+    length: 3
+  - path: plan.steps[0].node_name
+    equals: doc_structure_gen

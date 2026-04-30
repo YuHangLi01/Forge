@@ -1,0 +1,54 @@
+# Scenario A: Voice message → doc generation
+# Tests: preprocess (audio branch) → intent_parser → context_retrieval → planner → doc trio
+name: scenario_a_voice_file
+description: |
+  User sends a 5-second Chinese voice message requesting a Q3 review document.
+  Graph should: transcribe → parse intent → retrieve context → plan → generate doc → write to Feishu.
+
+mocks:
+  asr:
+    transcript: "围绕Q3数据写一份800字以内的复盘文档，主要包括背景、数据分析和结论"
+  llm_intent:
+    task_type: create_new
+    primary_goal: "写Q3复盘文档"
+    target_audience: "管理层"
+    style_hint: "简洁数据驱动"
+    output_formats: ["document"]
+    ambiguity_score: 0.1
+    missing_info: []
+  llm_outline:
+    document_title: "Q3复盘报告"
+    sections:
+      - id: s0
+        title: "背景"
+      - id: s1
+        title: "数据分析"
+      - id: s2
+        title: "结论"
+  llm_content:
+    "背景": "Q3期间，产品日活跃用户（DAU）达到120万，环比增长12%。"
+    "数据分析": "核心指标：DAU 120万，环比+12%；留存率 42%，同比持平。"
+    "结论": "Q3整体超出预期，建议Q4重点聚焦用户留存提升。"
+  feishu_doc_create:
+    doc_id: "test-doc-scenario-a"
+    share_url: "https://feishu.cn/docx/test-doc-scenario-a"
+
+initial_state:
+  message_type: audio
+  message_id: "om_test_scenario_a"
+  chat_id: "oc_test_chat_a"
+  user_id: "demo_user_a"
+  file_key: "file_test_audio_key"
+
+assertions:
+  # After preprocess
+  - path: normalized_text
+    min_length: 5
+    contains: ""  # any non-empty Chinese text
+  # After doc generation chain
+  - path: doc.doc_id
+    equals: "test-doc-scenario-a"
+  - path: doc.sections
+    length: 3
+  - path: status
+    equals: completed

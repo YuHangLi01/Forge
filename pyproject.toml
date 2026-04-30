@@ -26,6 +26,8 @@ dependencies = [
     "markdown-it-py>=3.0",
     "tenacity>=9.0",
     "cryptography>=43.0",
+    "sentence-transformers>=3.0",
+    "langsmith>=0.1.140",
 ]
 
 [dependency-groups]
@@ -67,6 +69,7 @@ addopts = "--cov=app --cov-report=term-missing --cov-fail-under=70 --ignore=test
 testpaths = ["tests"]
 markers = [
     "integration: live-network tests; require FORGE_RUN_INTEGRATION=1 and real .env",
+    "golden: golden-set regression tests for LLM prompt outputs",
 ]
 
 [tool.coverage.run]

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import structlog
 
 from app.converters.md2feishu import md_to_feishu_blocks
@@ -58,37 +60,97 @@ class FeishuDocService:
         )
 
     def _align_sections(self, markdown: str, blocks: list[dict[str, object]]) -> list[DocSection]:
-        sections: list[DocSection] = []
+        from app.converters import feishu_block_types as bt
+
+        # Parse H1 boundaries from markdown
+        section_titles: list[str] = []
+        section_contents: list[list[str]] = []
         current_title = ""
         current_lines: list[str] = []
-        current_block_ids: list[str] = []
 
         for line in markdown.splitlines():
             if line.startswith("# "):
                 if current_title:
-                    sections.append(
-                        DocSection(
-                            id=f"section_{len(sections)}",
-                            title=current_title,
-                            content_md="\n".join(current_lines),
-                            block_ids=current_block_ids,
-                        )
-                    )
+                    section_titles.append(current_title)
+                    section_contents.append(current_lines)
                 current_title = line[2:].strip()
                 current_lines = []
-                current_block_ids = []
             else:
                 current_lines.append(line)
-
         if current_title:
+            section_titles.append(current_title)
+            section_contents.append(current_lines)
+
+        if not section_titles:
+            return []
+
+        # Positional match: Nth HEADING1 block in Feishu response → Nth H1 section
+        h1_positions = [i for i, blk in enumerate(blocks) if blk.get("block_type") == bt.HEADING1]
+
+        sections: list[DocSection] = []
+        for idx, title in enumerate(section_titles):
+            if idx < len(h1_positions):
+                start = h1_positions[idx]
+                end = h1_positions[idx + 1] if idx + 1 < len(h1_positions) else len(blocks)
+                section_block_ids = [
+                    str(blocks[i]["block_id"]) for i in range(start, end) if "block_id" in blocks[i]
+                ]
+            else:
+                section_block_ids = []
+
             sections.append(
                 DocSection(
-                    id=f"section_{len(sections)}",
-                    title=current_title,
-                    content_md="\n".join(current_lines),
-                    block_ids=current_block_ids,
+                    id=f"section_{idx}",
+                    title=title,
+                    content_md="\n".join(section_contents[idx]),
+                    block_ids=section_block_ids,
                 )
             )
 
-        _ = blocks  # block_id alignment requires Feishu block position API (T10 follow-up)
         return sections
+
+    async def patch_section(
+        self,
+        doc_id: str,
+        section_block_ids: list[str],
+        section_title: str,
+        new_content_md: str,
+    ) -> None:
+        """Replace a section's content blocks in-place using delete-then-insert.
+
+        Deletes the non-heading blocks from section_block_ids[1:] (keeps the
+        heading block at [0]), then appends new blocks under the heading.
+        Falls back gracefully if block operations fail.
+        """
+        if not section_block_ids:
+            logger.warning("patch_section_no_block_ids", section=section_title)
+            return
+
+        heading_block_id = section_block_ids[0]
+        body_block_ids = section_block_ids[1:]
+
+        # Delete old body blocks
+        if body_block_ids:
+            try:
+                await self._adapter.delete_blocks(doc_id, body_block_ids)
+                logger.debug(
+                    "patch_section_deleted", n_blocks=len(body_block_ids), section=section_title
+                )
+            except Exception:
+                logger.exception("patch_section_delete_failed", section=section_title)
+                return
+
+        # Insert new content under the heading block
+        new_blocks = md_to_simple_blocks(new_content_md)
+        if new_blocks:
+            try:
+                await self._adapter.batch_update_blocks(
+                    doc_id, new_blocks, parent_block_id=heading_block_id
+                )
+                logger.info(
+                    "patch_section_inserted",
+                    section=section_title,
+                    n_blocks=len(new_blocks),
+                )
+            except Exception:
+                logger.exception("patch_section_insert_failed", section=section_title)
