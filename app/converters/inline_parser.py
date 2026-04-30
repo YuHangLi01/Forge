@@ -40,7 +40,15 @@ def parse_inline_tokens(tokens: list[Token]) -> list[dict[str, Any]]:
             # Degrade HTML inline to plain text
             elements.append(_text_run(tok.content))
 
-    return [e for e in elements if e.get("content") != ""]
+    return [e for e in elements if _content(e) != ""]
+
+
+def _content(element: dict[str, Any]) -> str:
+    """Extract the text content from a text_run-style element (oneof shape)."""
+    run = element.get("text_run") or {}
+    if isinstance(run, dict):
+        return str(run.get("content", ""))
+    return ""
 
 
 def _text_run(
@@ -50,6 +58,14 @@ def _text_run(
     code: bool = False,
     inline_code: bool = False,
 ) -> dict[str, Any]:
+    """Return a Feishu docx v1 TextElement with a text_run oneof.
+
+    Schema (from lark-oapi TextElement / TextRun): each element is a
+    *single* oneof key (``text_run``, ``mention_user``, ``link_preview``…)
+    whose value carries ``content`` and ``text_element_style``.
+    The flat ``{"tag": "text_run", "content": ...}`` shape used previously
+    was rejected by Feishu with code 99992402 'field validation failed'.
+    """
     style: dict[str, Any] = {}
     if bold:
         style["bold"] = True
@@ -57,15 +73,16 @@ def _text_run(
         style["italic"] = True
     if inline_code or code:
         style["inline_code"] = True
-    run: dict[str, Any] = {"tag": "text_run", "content": content}
+    text_run: dict[str, Any] = {"content": content}
     if style:
-        run["text_element_style"] = style
-    return run
+        text_run["text_element_style"] = style
+    return {"text_run": text_run}
 
 
 def _link_run(content: str, href: str) -> dict[str, Any]:
     return {
-        "tag": "text_run",
-        "content": content,
-        "text_element_style": {"link": {"url": href}},
+        "text_run": {
+            "content": content,
+            "text_element_style": {"link": {"url": href}},
+        }
     }

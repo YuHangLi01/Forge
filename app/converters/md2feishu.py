@@ -74,8 +74,10 @@ def _parse_token_stream(tokens: list[Token]) -> list[dict[str, Any]]:
             i += consumed
 
         elif tok.type in ("html_block", "hr"):
-            # Degrade HTML blocks and horizontal rules to empty text blocks
-            blocks.append(text_block([{"tag": "text_run", "content": tok.content.strip()}]))
+            # Degrade HTML blocks and horizontal rules to plain text
+            content = tok.content.strip()
+            elements = [{"text_run": {"content": content}}] if content else []
+            blocks.append(text_block(elements))
             i += 1
 
         else:

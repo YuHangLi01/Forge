@@ -11,6 +11,11 @@ def _blocks(md: str) -> list[dict]:
     return md_to_feishu_blocks(md)
 
 
+def _run(element: dict) -> dict:
+    """Each TextElement is a oneof; we use text_run for plain content."""
+    return element["text_run"]
+
+
 # ---- Heading blocks ----------------------------------------------------------
 
 
@@ -18,7 +23,7 @@ def test_h1_block() -> None:
     result = _blocks("# Hello World")
     assert len(result) == 1
     assert result[0]["block_type"] == bt.HEADING1
-    assert result[0]["heading1"]["elements"][0]["content"] == "Hello World"
+    assert _run(result[0]["heading1"]["elements"][0])["content"] == "Hello World"
 
 
 def test_h2_block() -> None:
@@ -37,41 +42,40 @@ def test_h3_block() -> None:
 def test_paragraph_plain() -> None:
     result = _blocks("Hello, Forge!")
     assert result[0]["block_type"] == bt.TEXT
-    assert result[0]["text"]["elements"][0]["content"] == "Hello, Forge!"
+    assert _run(result[0]["text"]["elements"][0])["content"] == "Hello, Forge!"
 
 
 def test_paragraph_bold() -> None:
     result = _blocks("**bold text**")
-    el = result[0]["text"]["elements"][0]
-    assert el["content"] == "bold text"
-    assert el["text_element_style"]["bold"] is True
+    run = _run(result[0]["text"]["elements"][0])
+    assert run["content"] == "bold text"
+    assert run["text_element_style"]["bold"] is True
 
 
 def test_paragraph_italic() -> None:
     result = _blocks("*italic text*")
-    el = result[0]["text"]["elements"][0]
-    assert el["text_element_style"]["italic"] is True
+    run = _run(result[0]["text"]["elements"][0])
+    assert run["text_element_style"]["italic"] is True
 
 
 def test_paragraph_inline_code() -> None:
     result = _blocks("`some_code()`")
-    el = result[0]["text"]["elements"][0]
-    assert el["text_element_style"]["inline_code"] is True
+    run = _run(result[0]["text"]["elements"][0])
+    assert run["text_element_style"]["inline_code"] is True
 
 
 def test_paragraph_link() -> None:
     result = _blocks("[Feishu](https://feishu.cn)")
-    el = result[0]["text"]["elements"][0]
-    assert el["content"] == "Feishu"
-    assert "link" in el["text_element_style"]
-    assert el["text_element_style"]["link"]["url"] == "https://feishu.cn"
+    run = _run(result[0]["text"]["elements"][0])
+    assert run["content"] == "Feishu"
+    assert "link" in run["text_element_style"]
+    assert run["text_element_style"]["link"]["url"] == "https://feishu.cn"
 
 
 def test_paragraph_bold_and_italic_combined() -> None:
     result = _blocks("**bold *italic* mix**")
     elements = result[0]["text"]["elements"]
-    # Should have multiple text runs; bold should be on outer run
-    texts = [e["content"] for e in elements]
+    texts = [_run(e)["content"] for e in elements]
     assert any("bold" in t or "mix" in t or "italic" in t for t in texts)
 
 
@@ -81,7 +85,7 @@ def test_paragraph_bold_and_italic_combined() -> None:
 def test_bullet_list_single() -> None:
     result = _blocks("- item one")
     assert result[0]["block_type"] == bt.BULLET
-    assert result[0]["bullet"]["elements"][0]["content"] == "item one"
+    assert _run(result[0]["bullet"]["elements"][0])["content"] == "item one"
 
 
 def test_bullet_list_multiple() -> None:
@@ -115,7 +119,7 @@ def test_ordered_list_multiple() -> None:
 
 def test_ordered_list_content() -> None:
     result = _blocks("1. Step one")
-    assert result[0]["ordered"]["elements"][0]["content"] == "Step one"
+    assert _run(result[0]["ordered"]["elements"][0])["content"] == "Step one"
 
 
 # ---- Code block -------------------------------------------------------------
@@ -125,7 +129,7 @@ def test_code_block_python() -> None:
     result = _blocks("```python\nprint('hello')\n```")
     assert result[0]["block_type"] == bt.CODE
     assert result[0]["code"]["style"]["language"] == "Python"
-    assert "print" in result[0]["code"]["elements"][0]["content"]
+    assert "print" in _run(result[0]["code"]["elements"][0])["content"]
 
 
 def test_code_block_no_lang() -> None:
