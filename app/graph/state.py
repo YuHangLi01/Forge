@@ -6,6 +6,7 @@ from typing import Annotated, Any, TypedDict
 from app.schemas.artifacts import DocArtifact, PPTArtifact
 from app.schemas.enums import TaskStatus
 from app.schemas.intent import IntentSchema, ModificationIntent
+from app.schemas.modification import ModificationRecord
 from app.schemas.plan import PlanSchema
 
 
@@ -37,8 +38,7 @@ class AgentState(TypedDict, total=False):
     completed_section_ids: list[str]
 
     # Modification history — each edit appended; capped at 50 in doc_section_editor
-    # Typed as list[ModificationRecord] in T02 when ModificationRecord is introduced
-    modification_history: Annotated[list[Any], operator.add]  # reducer: append-only
+    modification_history: Annotated[list[ModificationRecord], operator.add]  # reducer: append-only
 
     # Human-in-the-loop: set by clarify_question, consumed + cleared by clarify_resume
     pending_user_action: dict[str, Any] | None
