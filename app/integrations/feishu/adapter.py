@@ -291,11 +291,58 @@ class FeishuAdapter:
     async def get_share_url(
         self, token: str, type_: Literal["doc", "slide", "file"] = "doc"
     ) -> str:
-        """Get a sharable URL for a document/file."""
-        domain = "https://open.feishu.cn"
+        """Build a Feishu share URL for a document or Drive file.
+
+        Uses ``feishu.cn`` (the user-facing domain) rather than the
+        OpenAPI ``open.feishu.cn`` host — clicking ``open.feishu.cn`` URLs
+        in Feishu lands the user on the developer console, not the doc.
+        Feishu redirects unauthenticated viewers via SSO automatically.
+        """
         type_map = {"doc": "docx", "slide": "slides", "file": "file"}
         path_type = type_map.get(type_, "docx")
-        return f"{domain}/{path_type}/{token}"
+        return f"https://feishu.cn/{path_type}/{token}"
+
+    async def set_permission_public(
+        self,
+        token: str,
+        type_: Literal["docx", "doc", "sheet", "slides", "file"] = "docx",
+        link_share_entity: str = "tenant_readable",
+    ) -> None:
+        """Open the file/doc to anyone in the tenant via shareable link.
+
+        Without this call, a doc/file the bot creates is private and the
+        share URL returns a 404 / no-permission page when the user clicks
+        it. ``link_share_entity`` values:
+        - ``tenant_readable`` (default): anyone in the bot's tenant who
+          has the link can read.
+        - ``anyone_readable``: any Feishu user with the link can read
+          (requires the workspace admin to allow external sharing).
+        - ``closed``: link is private (default after creation).
+        """
+        from lark_oapi.api.drive.v2 import (
+            PatchPermissionPublicRequest,
+            PermissionPublic,
+        )
+
+        body = PermissionPublic.builder().link_share_entity(link_share_entity).build()
+        req = (
+            PatchPermissionPublicRequest.builder()
+            .token(token)
+            .type(type_)
+            .request_body(body)
+            .build()
+        )
+        resp = await asyncio.to_thread(self._client.drive.v2.permission_public.patch, req)
+        if not resp.success():
+            logger.warning(
+                "set_permission_public_failed",
+                token=token,
+                type=type_,
+                code=getattr(resp, "code", 0),
+                msg=getattr(resp, "msg", ""),
+            )
+            return  # don't fail the whole pipeline; share URL may still work
+        logger.info("set_permission_public_ok", token=token, type=type_)
 
     @classmethod
     def from_settings(cls) -> "FeishuAdapter":

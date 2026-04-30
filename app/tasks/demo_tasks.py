@@ -120,6 +120,9 @@ async def _build_demo(feishu: Any, fixture: str, title_zh: str) -> dict[str, str
         markdown=markdown,
         simple=True,
     )
+    # Open the doc to anyone in the tenant who has the link; otherwise
+    # only the bot can read it and the share URL 404s for the user.
+    await feishu.set_permission_public(doc_artifact.doc_id, type_="docx")
 
     # 2. PPT bytes
     pptx_bytes = await PPTService().build_pptx_bytes(outline_title, slides, subtitle=subtitle)
@@ -129,6 +132,7 @@ async def _build_demo(feishu: Any, fixture: str, title_zh: str) -> dict[str, str
         name=f"{fixture}.pptx",
         content=pptx_bytes,
     )
+    await feishu.set_permission_public(file_token, type_="file")
     pptx_share_url = await feishu.get_share_url(file_token, type_="file")
 
     logger.info(
