@@ -74,13 +74,13 @@ def build_graph(checkpointer: Any = None) -> Any:
     """
     from app.graph.nodes.step_router import route, step_router_node
 
-    graph: StateGraph = StateGraph(AgentState)
+    graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)
 
     # Register all nodes — work nodes as stubs, step_router with real logic
     for node_name in WORK_NODES:
-        graph.add_node(node_name, _stub_node)
-    graph.add_node("step_router", step_router_node)
-    graph.add_node("error_handler", _stub_node)
+        graph.add_node(node_name, _stub_node)  # type: ignore[arg-type]
+    graph.add_node("step_router", step_router_node)  # type: ignore[arg-type]
+    graph.add_node("error_handler", _stub_node)  # type: ignore[arg-type]
 
     # Entry point
     graph.set_entry_point("preprocess")
@@ -94,7 +94,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     graph.add_edge("clarify_question", "step_router")
 
     # step_router dispatches conditionally to every possible next node
-    graph.add_conditional_edges("step_router", route, _ROUTER_TARGETS)
+    graph.add_conditional_edges("step_router", route, _ROUTER_TARGETS)  # type: ignore[arg-type]
 
     # error_handler is a terminal node
     graph.add_edge("error_handler", END)

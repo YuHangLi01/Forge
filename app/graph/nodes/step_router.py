@@ -68,8 +68,8 @@ def route(state: dict[str, Any]) -> str:
     # ── Priority 4e/f: follow the plan ──────────────────────────────────────
     next_step = plan.next_runnable_step(completed)
     if next_step is None:
-        return END
-    return next_step.node_name
+        return END  # type: ignore[return-value]
+    return str(next_step.node_name)
 
 
 async def step_router_node(state: dict[str, Any]) -> dict[str, Any]:
