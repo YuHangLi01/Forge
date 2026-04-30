@@ -1,7 +1,8 @@
-.PHONY: install fmt lint test run-api run-worker \
+.PHONY: install fmt lint test run-api run-worker run-worker-mac run-worker-linux \
         services-install services-up services-down services-status services-logs \
         db-migrate db-rollback clean \
-        docker-up docker-down
+        docker-up docker-down \
+        seed-demo seed-dev
 
 # ---- Application ------------------------------------------------------------
 
@@ -21,6 +22,12 @@ run-api:
 	uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 run-worker:
+	uv run celery -A app.tasks.celery_app worker -Q fast,slow --loglevel=info --concurrency=4
+
+run-worker-mac:
+	uv run celery -A app.tasks.celery_app worker -Q fast,slow --loglevel=info -P solo
+
+run-worker-linux:
 	uv run celery -A app.tasks.celery_app worker -Q fast,slow --loglevel=info --concurrency=4
 
 # ---- Standalone services (no Docker) ----------------------------------------
@@ -55,6 +62,14 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+# ---- Knowledge base seeding -------------------------------------------------
+
+seed-demo:
+	uv run python scripts/seed_data.py --env demo
+
+seed-dev:
+	uv run python scripts/seed_data.py --env dev
 
 # ---- Housekeeping -----------------------------------------------------------
 

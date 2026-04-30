@@ -131,6 +131,23 @@ def plan_preview_card(
     }
 
 
+def doc_done_card(label: str, url: str) -> dict[str, object]:
+    """Card shown when a document has been successfully written to Feishu."""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "green",
+            "title": {"tag": "plain_text", "content": "文档已生成"},
+        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": f"**{label}**\n\n[点击查看文档]({url})",
+            },
+        ],
+    }
+
+
 def error_card(message: str) -> dict[str, object]:
     """Simple error notification card."""
     return {

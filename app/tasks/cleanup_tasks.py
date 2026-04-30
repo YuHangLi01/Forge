@@ -1,4 +1,4 @@
-"""Cleanup periodic tasks: expire stale clarify actions."""
+"""Cleanup periodic tasks: expire stale clarify actions + flush progress cards."""
 
 from __future__ import annotations
 
@@ -115,3 +115,56 @@ async def _notify_expired(chat_id: str) -> None:
         chat_id,
         "由于超过 1 小时未收到您的回复，任务已自动取消。如需继续，请重新发送您的请求。",
     )
+
+
+# ── flush pending progress cards (200 ms beat) ────────────────────────────────
+
+_PENDING_PATTERN = "progress_pending:*"
+
+
+@forge_task(name="forge.flush_pending_progress", queue="fast")  # type: ignore[untyped-decorator]
+def flush_pending_progress(self: Any) -> dict[str, Any]:  # noqa: ARG001
+    """Drain progress_pending:* keys and emit one card update per message_id.
+
+    Scheduled via Celery beat every 200 ms.  Each key holds the *latest*
+    pending card payload (overwritten by ProgressBroadcaster._emit when the
+    1-second throttle is held).  We send it and delete the key atomically.
+    """
+    return asyncio.run(_flush_pending_progress_async())
+
+
+async def _flush_pending_progress_async() -> dict[str, Any]:
+    import redis.asyncio as aioredis
+
+    from app.config import get_settings
+
+    settings = get_settings()
+    r: aioredis.Redis = aioredis.from_url(settings.REDIS_URL)  # type: ignore[no-untyped-call]
+
+    flushed = 0
+
+    async with r:
+        cursor = 0
+        while True:
+            cursor, keys = await r.scan(cursor, match=_PENDING_PATTERN, count=200)
+            for key in keys:
+                raw = await r.getdel(key)
+                if raw is None:
+                    continue
+                # key is b"progress_pending:{message_id}" — decode and strip prefix
+                key_str = key.decode() if isinstance(key, bytes) else key
+                message_id = key_str.removeprefix("progress_pending:")
+                try:
+                    from app.integrations.feishu.adapter import FeishuAdapter
+
+                    card = json.loads(raw)
+                    adapter = FeishuAdapter()
+                    await adapter.update_card(message_id, card)
+                    flushed += 1
+                except Exception:
+                    logger.exception("flush_pending_progress_send_failed", message_id=message_id)
+
+            if cursor == 0:
+                break
+
+    return {"flushed": flushed}

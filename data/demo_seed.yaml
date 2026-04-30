@@ -1,0 +1,69 @@
+# Demo seed data for Stage 2 development and testing
+# All user_ids must have "demo_" or "dev_" prefix; seed_data.py rejects others.
+
+users:
+  - user_id: demo_alice
+    display_name: "Alice（产品经理）"
+    chat_id: "oc_demo_alice_chat"
+  - user_id: demo_bob
+    display_name: "Bob（数据分析师）"
+    chat_id: "oc_demo_bob_chat"
+  - user_id: demo_charlie
+    display_name: "Charlie（工程负责人）"
+    chat_id: "oc_demo_charlie_chat"
+  - user_id: dev_tester1
+    display_name: "测试账号1"
+    chat_id: "oc_dev_tester1_chat"
+  - user_id: dev_tester2
+    display_name: "测试账号2"
+    chat_id: "oc_dev_tester2_chat"
+
+messages:
+  - user_id: demo_alice
+    message_id: "om_seed_001"
+    content: "围绕Q3数据写一份800字以内的复盘文档，主要包括背景、数据分析和结论"
+    expected_task_type: create_new
+    expected_output_format: document
+
+  - user_id: demo_alice
+    message_id: "om_seed_002"
+    content: "帮我做个材料"
+    expected_task_type: create_new
+    expected_ambiguity_score_min: 0.7
+
+  - user_id: demo_bob
+    message_id: "om_seed_003"
+    content: "把第2节改简洁一点"
+    expected_task_type: modify_existing
+    expected_output_format: document
+
+  - user_id: demo_bob
+    message_id: "om_seed_004"
+    content: "刚才改的那段加上数据来源"
+    expected_task_type: modify_existing
+    requires_history: true
+
+  - user_id: demo_charlie
+    message_id: "om_seed_005"
+    content: "今天Q3复盘会议讨论了哪些风险点？"
+    expected_task_type: query_only
+    expected_output_format: message_only
+
+  - user_id: dev_tester1
+    message_id: "om_seed_006"
+    content: "取消"
+    expected_race_action: cancel
+
+  - user_id: dev_tester2
+    message_id: "om_seed_007"
+    content: "生成一份年终总结PPT"
+    expected_task_type: create_new
+    expected_output_format: presentation
+
+knowledge_base:
+  - user_id: demo_alice
+    doc_id: "kb_alice_q3_review"
+    file: "tests/fixtures/meetings/q3_review.md"
+  - user_id: demo_bob
+    doc_id: "kb_bob_q3_data"
+    file: "tests/fixtures/meetings/q3_data_analysis.md"
