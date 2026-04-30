@@ -22,11 +22,13 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_routes={
         "app.tasks.message_tasks.*": {"queue": "slow"},
+        "app.tasks.demo_tasks.*": {"queue": "slow"},
         "app.tasks.card_tasks.*": {"queue": "fast"},
         "app.tasks.echo_tasks.*": {"queue": "fast"},
     },
     imports=(
         "app.tasks.message_tasks",
+        "app.tasks.demo_tasks",
         "app.tasks.card_tasks",
         "app.tasks.echo_tasks",
     ),

@@ -77,6 +77,7 @@ omit = [
     # These require live infra (Feishu API, PostgreSQL, Volcano ASR) — tested via integration tests
     "app/integrations/feishu/adapter.py",
     "app/integrations/volc_asr/client.py",
+    "app/tasks/demo_tasks.py",
     "app/db/*",
     "app/repositories/*",
     "app/services/llm_service.py",

@@ -25,6 +25,7 @@ async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
     from app.integrations.feishu.adapter import FeishuAdapter
     from app.services.asr_service import ASRService
     from app.services.echo_responder import EchoResponder
+    from app.services.intent_router import classify
     from app.services.message_router import parse_message
 
     msg = parse_message(payload)
@@ -46,6 +47,14 @@ async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
 
     if not user_text.strip():
         return {"status": "received", "message_type": msg.message_type}
+
+    intent = classify(user_text)
+    if intent == "generate_demo":
+        from app.tasks.demo_tasks import handle_demo_request_task
+
+        handle_demo_request_task.delay(payload)
+        logger.info("demo_task_dispatched", message_id=msg.message_id, text=user_text)
+        return {"status": "dispatched", "intent": "generate_demo"}
 
     try:
         reply = await responder.respond(msg.chat_id, msg.message_id, user_text)

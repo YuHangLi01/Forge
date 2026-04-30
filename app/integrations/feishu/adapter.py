@@ -199,6 +199,50 @@ class FeishuAdapter:
             blocks.append({"block_id": item.block_id, "block_type": item.block_type})
         return blocks
 
+    @retry(
+        retry=retry_if_exception_type(FeishuRateLimitError),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=30),
+        reraise=True,
+    )
+    async def upload_drive_file(
+        self,
+        name: str,
+        content: bytes,
+        parent_token: str = "",
+        parent_type: str = "explorer",
+    ) -> str:
+        """Upload a binary file to Feishu Drive. Returns the new file_token.
+
+        ``parent_token`` empty → upload to the user's own root explorer;
+        non-empty → folder_token returned by ``create_folder`` or pasted
+        from a Feishu URL.
+        """
+        from io import BytesIO
+
+        from lark_oapi.api.drive.v1 import UploadAllFileRequest, UploadAllFileRequestBody
+
+        body = (
+            UploadAllFileRequestBody.builder()
+            .file_name(name)
+            .parent_type(parent_type)
+            .parent_node(parent_token)
+            .size(len(content))
+            .file(BytesIO(content))
+            .build()
+        )
+        req = UploadAllFileRequest.builder().request_body(body).build()
+        resp = await asyncio.to_thread(self._client.drive.v1.file.upload_all, req)
+        _check_response(resp, "upload_drive_file")
+        file_token: str = resp.data.file_token or ""
+        logger.info(
+            "upload_drive_file_ok",
+            file_token=file_token,
+            name=name,
+            bytes_len=len(content),
+        )
+        return file_token
+
     async def get_share_url(
         self, token: str, type_: Literal["doc", "slide", "file"] = "doc"
     ) -> str:
