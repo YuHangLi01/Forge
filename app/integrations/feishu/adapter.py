@@ -167,24 +167,35 @@ class FeishuAdapter:
         return doc_token
 
     async def batch_update_blocks(
-        self, doc_token: str, requests: list[dict[str, Any]]
+        self,
+        doc_token: str,
+        children: list[dict[str, Any]],
+        parent_block_id: str | None = None,
     ) -> list[str]:
-        """Write blocks to a document. Returns list of created block_ids."""
+        """Append a list of blocks under the given parent in a document.
+
+        Uses POST /open-apis/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children
+        which expects a flat list of block payloads. By default ``parent_block_id``
+        is the document_id (root); pass a specific block_id to nest. Returns
+        the new ``block_id`` for each created child.
+        """
         from lark_oapi.api.docx.v1 import (
-            BatchUpdateDocumentBlockRequest,
-            BatchUpdateDocumentBlockRequestBody,
+            CreateDocumentBlockChildrenRequest,
+            CreateDocumentBlockChildrenRequestBody,
         )
 
-        body = BatchUpdateDocumentBlockRequestBody.builder().requests(requests).build()
+        parent = parent_block_id or doc_token
+        body = CreateDocumentBlockChildrenRequestBody.builder().children(children).index(-1).build()
         req = (
-            BatchUpdateDocumentBlockRequest.builder()
+            CreateDocumentBlockChildrenRequest.builder()
             .document_id(doc_token)
+            .block_id(parent)
             .request_body(body)
             .build()
         )
-        resp = await asyncio.to_thread(self._client.docx.v1.document_block.batch_update, req)
+        resp = await asyncio.to_thread(self._client.docx.v1.document_block_children.create, req)
         _check_response(resp, "batch_update_blocks")
-        block_ids = [r.block_id for r in (resp.data.results or []) if r.block_id]
+        block_ids = [c.block_id for c in (resp.data.children or []) if c.block_id]
         return block_ids
 
     async def get_document_blocks(self, doc_token: str) -> list[dict[str, Any]]:
