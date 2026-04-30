@@ -10,6 +10,10 @@ from app.integrations.feishu.exceptions import FeishuAPIError, FeishuRateLimitEr
 logger = structlog.get_logger(__name__)
 
 _RATE_LIMIT_CODE = 99991663
+# Max children per single create_document_block_children call. Feishu's docx
+# v1 returns 99992402 'field validation failed' once the array gets too
+# large (observed: 85 children fails; 30 is comfortably under the limit).
+_MAX_CHILDREN_PER_CALL = 30
 
 
 def _check_response(resp: Any, method: str) -> Any:
@@ -176,27 +180,46 @@ class FeishuAdapter:
 
         Uses POST /open-apis/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children
         which expects a flat list of block payloads. By default ``parent_block_id``
-        is the document_id (root); pass a specific block_id to nest. Returns
-        the new ``block_id`` for each created child.
+        is the document_id (root); pass a specific block_id to nest.
+
+        Feishu's docx v1 API rejects single requests carrying too many
+        children (observed: 85 children fails with code 99992402 'field
+        validation failed' even when individual blocks are schema-valid).
+        We split the work into chunks of at most ``_MAX_CHILDREN_PER_CALL``
+        and POST them in order, accumulating the returned block_ids.
         """
+        if not children:
+            return []
+        parent = parent_block_id or doc_token
+        all_block_ids: list[str] = []
+        for i in range(0, len(children), _MAX_CHILDREN_PER_CALL):
+            chunk = children[i : i + _MAX_CHILDREN_PER_CALL]
+            chunk_ids = await self._create_block_children(doc_token, parent, chunk)
+            all_block_ids.extend(chunk_ids)
+        return all_block_ids
+
+    async def _create_block_children(
+        self,
+        doc_token: str,
+        parent_block_id: str,
+        children: list[dict[str, Any]],
+    ) -> list[str]:
+        """One ``create_document_block_children`` call. Logs raw payload on failure."""
         from lark_oapi.api.docx.v1 import (
             CreateDocumentBlockChildrenRequest,
             CreateDocumentBlockChildrenRequestBody,
         )
 
-        parent = parent_block_id or doc_token
         body = CreateDocumentBlockChildrenRequestBody.builder().children(children).index(-1).build()
         req = (
             CreateDocumentBlockChildrenRequest.builder()
             .document_id(doc_token)
-            .block_id(parent)
+            .block_id(parent_block_id)
             .request_body(body)
             .build()
         )
         resp = await asyncio.to_thread(self._client.docx.v1.document_block_children.create, req)
         if not resp.success():
-            # Log the first child block for fast schema-debug from journalctl,
-            # then raise via _check_response.
             first = children[0] if children else None
             logger.warning(
                 "batch_update_blocks_failed",
@@ -207,8 +230,7 @@ class FeishuAdapter:
                 first_block=json.dumps(first, ensure_ascii=False) if first is not None else None,
             )
         _check_response(resp, "batch_update_blocks")
-        block_ids = [c.block_id for c in (resp.data.children or []) if c.block_id]
-        return block_ids
+        return [c.block_id for c in (resp.data.children or []) if c.block_id]
 
     async def get_document_blocks(self, doc_token: str) -> list[dict[str, Any]]:
         """Read all blocks from a document."""
