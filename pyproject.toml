@@ -26,8 +26,12 @@ dependencies = [
     "markdown-it-py>=3.0",
     "tenacity>=9.0",
     "cryptography>=43.0",
-    "sentence-transformers>=3.0",
     "langsmith>=0.1.140",
+]
+
+[project.optional-dependencies]
+ml = [
+    "sentence-transformers>=3.0",
 ]
 
 [dependency-groups]

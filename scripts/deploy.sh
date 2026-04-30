@@ -31,8 +31,8 @@ for attempt in 1 2 3; do
 done
 git reset --hard origin/main
 
-echo "==> [deploy] uv sync"
-uv sync --frozen
+echo "==> [deploy] uv sync (skipping ml extras — sentence-transformers/torch not needed on API/worker)"
+uv sync --frozen --no-extra ml
 
 echo "==> [deploy] alembic upgrade head"
 uv run alembic upgrade head
