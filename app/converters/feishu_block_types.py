@@ -20,20 +20,29 @@ GRID = 40
 
 HEADING_LEVEL_MAP = {1: HEADING1, 2: HEADING2, 3: HEADING3}
 
+# Feishu code-block language enum (int).
+# Reference: https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/data-structure/block#code
+# Values are the documented integer codes; PlainText (1) is used as the
+# default fallback when the markdown fence info is missing or unknown.
+CODE_LANG_PLAIN = 1
 CODE_LANG_MAP = {
-    "python": "Python",
-    "javascript": "JavaScript",
-    "typescript": "TypeScript",
-    "java": "Java",
-    "go": "Go",
-    "rust": "Rust",
-    "bash": "Shell",
-    "sh": "Shell",
-    "sql": "SQL",
-    "json": "JSON",
-    "yaml": "YAML",
-    "xml": "XML",
-    "html": "HTML",
-    "css": "CSS",
-    "": "PlainText",
+    "python": 49,
+    "javascript": 30,
+    "js": 30,
+    "typescript": 63,
+    "ts": 63,
+    "java": 28,
+    "go": 22,
+    "rust": 51,
+    "bash": 4,
+    "sh": 4,
+    "shell": 4,
+    "sql": 54,
+    "json": 31,
+    "yaml": 65,
+    "yml": 65,
+    "xml": 64,
+    "html": 24,
+    "css": 12,
+    "": CODE_LANG_PLAIN,
 }

@@ -97,10 +97,10 @@ def test_bullet_list_multiple() -> None:
 def test_bullet_list_nested() -> None:
     md = "- parent\n  - child\n    - grandchild"
     result = _blocks(md)
-    # All items should be bullets; nested ones have higher indent_level
+    # All items should be bullets (nesting visualisation is left to Feishu).
     assert all(b["block_type"] == bt.BULLET for b in result)
-    # Parent is level 0
-    assert result[0]["bullet"]["style"]["indent_level"] == 0
+    # Empty style — docx v1 has no numeric indent field, see block_builder.
+    assert result[0]["bullet"]["style"] == {}
 
 
 # ---- Ordered list -----------------------------------------------------------
@@ -128,43 +128,46 @@ def test_ordered_list_content() -> None:
 def test_code_block_python() -> None:
     result = _blocks("```python\nprint('hello')\n```")
     assert result[0]["block_type"] == bt.CODE
-    assert result[0]["code"]["style"]["language"] == "Python"
+    # docx v1 TextStyle.language is an int (Python = 49)
+    assert result[0]["code"]["style"]["language"] == 49
     assert "print" in _run(result[0]["code"]["elements"][0])["content"]
 
 
 def test_code_block_no_lang() -> None:
     result = _blocks("```\nsome code\n```")
     assert result[0]["block_type"] == bt.CODE
-    assert result[0]["code"]["style"]["language"] == "PlainText"
+    assert result[0]["code"]["style"]["language"] == bt.CODE_LANG_PLAIN  # 1
 
 
 def test_code_block_go() -> None:
     result = _blocks('```go\nfmt.Println("hi")\n```')
-    assert result[0]["code"]["style"]["language"] == "Go"
+    assert result[0]["code"]["style"]["language"] == 22  # Go
 
 
 # ---- Table ------------------------------------------------------------------
 
 
-def test_table_basic() -> None:
+def test_table_degrades_to_text() -> None:
+    """docx v1 TableBlock cells are block_id refs, not inline blocks.
+
+    Building the two-phase table structure inside one
+    create_document_block_children call isn't supported, so the converter
+    degrades tables to a single text block with rows joined by newlines.
+    """
     md = "| A | B |\n|---|---|\n| 1 | 2 |"
     result = _blocks(md)
-    assert result[0]["block_type"] == bt.TABLE
-    table = result[0]["table"]
-    assert table["property"]["column_size"] == 2
-    assert table["property"]["row_size"] >= 2
+    assert result[0]["block_type"] == bt.TEXT
+    body = _run(result[0]["text"]["elements"][0])["content"]
+    assert "A | B" in body
+    assert "1 | 2" in body
 
 
-def test_table_three_columns() -> None:
+def test_table_three_columns_degrades() -> None:
     md = "| X | Y | Z |\n|---|---|---|\n| a | b | c |"
     result = _blocks(md)
-    assert result[0]["table"]["property"]["column_size"] == 3
-
-
-def test_table_header_row() -> None:
-    md = "| Name | Score |\n|------|-------|\n| Alice | 90 |"
-    result = _blocks(md)
-    assert result[0]["table"]["property"]["header_row"] is True
+    assert result[0]["block_type"] == bt.TEXT
+    body = _run(result[0]["text"]["elements"][0])["content"]
+    assert "a | b | c" in body
 
 
 # ---- Unsupported syntax graceful degradation --------------------------------
@@ -204,8 +207,7 @@ def test_sample_doc_fixture() -> None:
     assert len(result) > 5
     # First block should be H1
     assert result[0]["block_type"] == bt.HEADING1
-    # Must contain bullet blocks
+    # Must contain bullet + code; tables degrade to text (see test_table_*)
     block_types = [r["block_type"] for r in result]
     assert bt.BULLET in block_types
     assert bt.CODE in block_types
-    assert bt.TABLE in block_types
