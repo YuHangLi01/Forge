@@ -55,6 +55,82 @@ def clarify_card(questions: list[str], request_id: str, thread_id: str) -> dict[
     }
 
 
+def plan_preview_card(
+    steps: list[dict[str, object]],
+    thread_id: str,
+    total_seconds: int,
+) -> dict[str, object]:
+    """Card showing the execution plan with Confirm / Replan / Cancel buttons."""
+    lines = []
+    for i, step in enumerate(steps, 1):
+        node = step.get("node_name", "?")
+        secs = step.get("estimated_seconds", 0)
+        lines.append(f"{i}. `{node}` (~{secs}s)")
+    steps_md = "\n".join(lines)
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "wathet",
+            "title": {"tag": "plain_text", "content": "执行计划预览"},
+        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": (
+                    f"**预计步骤：**\n{steps_md}\n\n" f"**总耗时预估：** 约 {total_seconds} 秒"
+                ),
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "确认执行"},
+                        "type": "primary",
+                        "behaviors": [
+                            {
+                                "type": "callback",
+                                "value": {
+                                    "action": "plan_confirm",
+                                    "thread_id": thread_id,
+                                },
+                            }
+                        ],
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "重新规划"},
+                        "type": "default",
+                        "behaviors": [
+                            {
+                                "type": "callback",
+                                "value": {
+                                    "action": "plan_replan",
+                                    "thread_id": thread_id,
+                                },
+                            }
+                        ],
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "取消"},
+                        "type": "danger",
+                        "behaviors": [
+                            {
+                                "type": "callback",
+                                "value": {
+                                    "action": "plan_cancel",
+                                    "thread_id": thread_id,
+                                },
+                            }
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+
+
 def error_card(message: str) -> dict[str, object]:
     """Simple error notification card."""
     return {
