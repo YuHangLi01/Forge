@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import structlog
 
 from app.converters.md2feishu import md_to_feishu_blocks
@@ -106,3 +108,49 @@ class FeishuDocService:
             )
 
         return sections
+
+    async def patch_section(
+        self,
+        doc_id: str,
+        section_block_ids: list[str],
+        section_title: str,
+        new_content_md: str,
+    ) -> None:
+        """Replace a section's content blocks in-place using delete-then-insert.
+
+        Deletes the non-heading blocks from section_block_ids[1:] (keeps the
+        heading block at [0]), then appends new blocks under the heading.
+        Falls back gracefully if block operations fail.
+        """
+        if not section_block_ids:
+            logger.warning("patch_section_no_block_ids", section=section_title)
+            return
+
+        heading_block_id = section_block_ids[0]
+        body_block_ids = section_block_ids[1:]
+
+        # Delete old body blocks
+        if body_block_ids:
+            try:
+                await self._adapter.delete_blocks(doc_id, body_block_ids)
+                logger.debug(
+                    "patch_section_deleted", n_blocks=len(body_block_ids), section=section_title
+                )
+            except Exception:
+                logger.exception("patch_section_delete_failed", section=section_title)
+                return
+
+        # Insert new content under the heading block
+        new_blocks = md_to_simple_blocks(new_content_md)
+        if new_blocks:
+            try:
+                await self._adapter.batch_update_blocks(
+                    doc_id, new_blocks, parent_block_id=heading_block_id
+                )
+                logger.info(
+                    "patch_section_inserted",
+                    section=section_title,
+                    n_blocks=len(new_blocks),
+                )
+            except Exception:
+                logger.exception("patch_section_insert_failed", section=section_title)
