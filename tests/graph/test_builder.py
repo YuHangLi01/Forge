@@ -33,8 +33,27 @@ def test_build_graph_returns_different_instances() -> None:
 
 @pytest.mark.asyncio
 async def test_graph_can_invoke_end_to_end() -> None:
-    """Stub graph runs preprocess → step_router → END without error."""
+    """Stub graph reaches END when plan has no remaining steps.
+
+    With stub nodes (all returning {}), state never changes on its own.
+    We prime the state so step_router immediately routes to END via the
+    plan-driven path, avoiding infinite recursion.
+    """
+    from unittest.mock import MagicMock
+
     compiled = build_graph(None)
+
+    # Build a mock plan whose next_runnable_step always returns None (all done)
+    done_plan = MagicMock()
+    done_plan.next_runnable_step.return_value = None
+
+    # Build a mock intent that is clear (low ambiguity, create_new)
+    from app.schemas.enums import TaskType
+
+    clear_intent = MagicMock()
+    clear_intent.task_type = TaskType.create_new
+    clear_intent.ambiguity_score = 0.0
+
     result = await compiled.ainvoke(
         {
             "task_id": "t1",
@@ -42,8 +61,10 @@ async def test_graph_can_invoke_end_to_end() -> None:
             "chat_id": "c1",
             "message_id": "m1",
             "raw_input": "hello",
-            "completed_steps": [],
+            "completed_steps": ["context_retrieval"],  # retrieval already done
             "modification_history": [],
+            "intent": clear_intent,
+            "plan": done_plan,
         }
     )
     assert result is not None
