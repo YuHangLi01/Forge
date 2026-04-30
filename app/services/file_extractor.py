@@ -31,7 +31,7 @@ def extract_text_from_file(content: bytes, filename: str) -> str:
 
     if ext == ".docx":
         try:
-            from docx import Document  # type: ignore[import-untyped]
+            from docx import Document
 
             doc = Document(io.BytesIO(content))
             return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
