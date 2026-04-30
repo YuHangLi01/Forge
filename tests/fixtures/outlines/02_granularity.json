@@ -1,0 +1,121 @@
+{
+  "title": "CRM v2 一期 颗粒度对齐",
+  "subtitle": "用户故事拆分与 Sprint 排期 · 2026-04-15",
+  "slides": [
+    {
+      "type": "title",
+      "title": "CRM v2 一期 颗粒度对齐",
+      "subtitle": "用户故事拆分与 Sprint 排期 · 2026-04-15"
+    },
+    {
+      "type": "content",
+      "title": "会议目标",
+      "bullets": [
+        "把 5 大模块拆解为 Epic → Story → Task",
+        "对齐每个 Story 的颗粒度",
+        "为 12 个 Sprint 制定初步排期",
+        "识别地基性 Story 避免后续返工"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "9 个 Epic 概览",
+      "bullets": [
+        "EP-01 客户域基础数据模型",
+        "EP-02 商机域阶段配置化",
+        "EP-03 集成层基础设施",
+        "EP-04 移动端 PWA",
+        "EP-05 基础报表",
+        "EP-06 平台基础能力",
+        "EP-07 数据迁移",
+        "EP-08 灰度与观测",
+        "EP-09 上线运维"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "颗粒度判定标准（INVEST 强化）",
+      "bullets": [
+        "可在 1 个 Sprint 内交付：研发 ≤ 8 人天，QA ≤ 3 人天",
+        "独立可验收，依赖必须显式声明",
+        "能拆 Task：每个 Story 至少 3 个 Task（前端 / 后端 / 测试）",
+        "估算偏差 > 30% 重新评审"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "拆分调整摘要",
+      "bullets": [
+        "US-02 子树权限拆为 ACL 数据模型 + 权限服务 + 配置 UI",
+        "US-13 集成补偿增加死信处理 Task",
+        "US-25 全量迁移拆为引擎 + 脏数据修复脚本",
+        "Story 总数从 32 增加到 35"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "Sprint 0 - Sprint 6 排期",
+      "bullets": [
+        "S0 项目环境与 CI/CD",
+        "S1 EP-06 SSO + 审计 + 配置中心（地基）",
+        "S2 EP-01 客户树 CRUD + ACL 模型",
+        "S3 EP-01 完成 + EP-07 数据清洗",
+        "S4 EP-02 阶段模板 + 引擎",
+        "S5 EP-03 消息总线 + SAP PoC",
+        "S6 EP-03 SAP / Zendesk 联调"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "Sprint 7 - Sprint 12 排期",
+      "bullets": [
+        "S7 EP-03 Jira 同步 + 补偿重放 + EP-04 移动端框架",
+        "S8 EP-04 离线录入 + 同步",
+        "S9 EP-05 漏斗 + 回款看板",
+        "S10 EP-04 推送 + EP-05 流失预警",
+        "S11 EP-07 全量迁移演练 + EP-08 监控埋点",
+        "S12 UAT 修复 + EP-09 上线 Runbook"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "关键依赖关系",
+      "bullets": [
+        "EP-02 阶段引擎 ← EP-06 配置中心",
+        "EP-04 移动端登录 ← EP-06 SSO",
+        "EP-07 数据迁移 ← EP-01 客户域 schema",
+        "EP-05 报表 ← 数据中台底座建模"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "估算结果",
+      "bullets": [
+        "总故事点 287",
+        "团队历史速度 35 ~ 40 点 / Sprint",
+        "11 个 Sprint × 38 = 418 点容量",
+        "安全裕度 ~31%，覆盖临时插入与返工"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "主要风险",
+      "bullets": [
+        "EP-03 集成层估点偏低，Sprint 6 前预留 20 点 buffer",
+        "EP-07 数据迁移仅 1 轮 dry run 偏紧，建议增到 2 轮",
+        "外部供应商 SAP webhook 延期是黄红双警风险"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "下一步行动",
+      "bullets": [
+        "AI-07 在 Jira 创建 9 Epic + 35 Story（4/16）",
+        "AI-08 完成 Sprint 0 详设（4/17）",
+        "AI-09 客户域 ER 图与权限详设（4/22）",
+        "AI-10 SAP webhook 详细规范（4/19）",
+        "下一会议：Sprint 0 Kickoff 4/16 10:00"
+      ]
+    }
+  ]
+}

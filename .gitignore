@@ -50,3 +50,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Build / smoke output (build_demo_pptx.py, probe_feishu_slide_api.py)
+out/
