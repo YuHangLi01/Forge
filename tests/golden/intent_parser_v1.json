@@ -1,0 +1,96 @@
+[
+  {
+    "input": "帮我写一份Q3复盘文档，重点分析DAU下降的原因",
+    "expected": {
+      "task_type": "create_new",
+      "output_formats_contains": ["document"],
+      "ambiguity_score_max": 0.4,
+      "missing_info_empty": true
+    }
+  },
+  {
+    "input": "生成一个关于2024年市场策略的PPT",
+    "expected": {
+      "task_type": "create_new",
+      "output_formats_contains": ["presentation"],
+      "ambiguity_score_max": 0.5,
+      "missing_info_empty": false
+    }
+  },
+  {
+    "input": "帮我做个材料",
+    "expected": {
+      "task_type": "create_new",
+      "ambiguity_score_min": 0.6,
+      "missing_info_empty": false
+    }
+  },
+  {
+    "input": "把第二节改得简洁一些",
+    "expected": {
+      "task_type": "modify_existing",
+      "ambiguity_score_max": 0.7
+    }
+  },
+  {
+    "input": "扩写刚才那段内容，加上数据来源",
+    "expected": {
+      "task_type": "modify_existing",
+      "ambiguity_score_max": 0.6
+    }
+  },
+  {
+    "input": "什么是OKR？",
+    "expected": {
+      "task_type": "query_only",
+      "output_formats_contains": ["message_only"],
+      "ambiguity_score_max": 0.3
+    }
+  },
+  {
+    "input": "给新员工写一份入职指南，风格要简洁友好，受众是应届毕业生",
+    "expected": {
+      "task_type": "create_new",
+      "output_formats_contains": ["document"],
+      "ambiguity_score_max": 0.35,
+      "missing_info_empty": true
+    }
+  },
+  {
+    "input": "写个会议纪要",
+    "expected": {
+      "task_type": "create_new",
+      "output_formats_contains": ["document"],
+      "ambiguity_score_min": 0.4
+    }
+  },
+  {
+    "input": "删掉第三节",
+    "expected": {
+      "task_type": "modify_existing"
+    }
+  },
+  {
+    "input": "帮我整理一下这次用户调研的结论，做成一份可以给高管看的汇报文档",
+    "expected": {
+      "task_type": "create_new",
+      "output_formats_contains": ["document"],
+      "ambiguity_score_max": 0.5
+    }
+  },
+  {
+    "input": "嗯嗯好的",
+    "expected": {
+      "ambiguity_score_min": 0.7,
+      "missing_info_empty": false
+    }
+  },
+  {
+    "input": "给销售团队做一个产品介绍的幻灯片，要有图表和数据对比",
+    "expected": {
+      "task_type": "create_new",
+      "output_formats_contains": ["presentation"],
+      "ambiguity_score_max": 0.5
+    }
+  }
+]

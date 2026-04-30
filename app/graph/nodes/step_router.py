@@ -68,7 +68,7 @@ def route(state: dict[str, Any]) -> str:
     # ── Priority 4e/f: follow the plan ──────────────────────────────────────
     next_step = plan.next_runnable_step(completed)
     if next_step is None:
-        return END  # type: ignore[return-value]
+        return END  # END sentinel is str-compatible at runtime
     return str(next_step.node_name)
 
 

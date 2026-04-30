@@ -78,9 +78,9 @@ def build_graph(checkpointer: Any = None) -> Any:
 
     # Register all nodes — work nodes as stubs, step_router with real logic
     for node_name in WORK_NODES:
-        graph.add_node(node_name, _stub_node)  # type: ignore[arg-type]
-    graph.add_node("step_router", step_router_node)  # type: ignore[arg-type]
-    graph.add_node("error_handler", _stub_node)  # type: ignore[arg-type]
+        graph.add_node(node_name, _stub_node)  # type: ignore[type-var]
+    graph.add_node("step_router", step_router_node)  # type: ignore[type-var]
+    graph.add_node("error_handler", _stub_node)  # type: ignore[type-var]
 
     # Entry point
     graph.set_entry_point("preprocess")
