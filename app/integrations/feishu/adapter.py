@@ -194,6 +194,18 @@ class FeishuAdapter:
             .build()
         )
         resp = await asyncio.to_thread(self._client.docx.v1.document_block_children.create, req)
+        if not resp.success():
+            # Log the first child block for fast schema-debug from journalctl,
+            # then raise via _check_response.
+            first = children[0] if children else None
+            logger.warning(
+                "batch_update_blocks_failed",
+                doc_token=doc_token,
+                code=getattr(resp, "code", 0),
+                msg=getattr(resp, "msg", ""),
+                child_count=len(children),
+                first_block=json.dumps(first, ensure_ascii=False) if first is not None else None,
+            )
         _check_response(resp, "batch_update_blocks")
         block_ids = [c.block_id for c in (resp.data.children or []) if c.block_id]
         return block_ids

@@ -27,7 +27,7 @@ async def test_create_from_markdown_happy_path() -> None:
     adapter.get_share_url.return_value = "https://open.feishu.cn/docx/doc-token-123"
 
     md = "# 标题\n\n正文段落。\n\n- 要点 A\n- 要点 B\n"
-    artifact = await FeishuDocService(adapter).create_from_markdown("测试文档", md)
+    artifact = await FeishuDocService(adapter).create_from_markdown("测试文档", md, simple=True)
 
     assert isinstance(artifact, DocArtifact)
     assert artifact.doc_id == "doc-token-123"
