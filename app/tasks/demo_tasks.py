@@ -114,10 +114,11 @@ async def _build_demo(feishu: Any, fixture: str, title_zh: str) -> dict[str, str
     markdown = md_path.read_text(encoding="utf-8")
     outline_title, subtitle, slides = load_outline(outline_path)
 
-    # 1. Doc
+    # 1. Doc — use the simple converter for known-good schema compliance
     doc_artifact = await FeishuDocService(feishu).create_from_markdown(
         title=f"[Forge demo] {title_zh}",
         markdown=markdown,
+        simple=True,
     )
 
     # 2. PPT bytes
