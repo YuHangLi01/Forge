@@ -88,3 +88,56 @@ async def test_no_h1_returns_empty_sections() -> None:
     md = "正文1\n正文2\n## 二级标题不算节\n"
     artifact = await FeishuDocService(adapter).create_from_markdown("X", md)
     assert artifact.sections == []
+
+
+@pytest.mark.asyncio
+async def test_block_id_alignment_after_simple_md() -> None:
+    """Feishu block_ids are back-filled into each DocSection via positional matching.
+
+    The Nth HEADING1 block returned by get_document_blocks is assigned to
+    the Nth H1 section in the source markdown.  All blocks between that
+    HEADING1 and the next HEADING1 (or end-of-list) belong to that section.
+    """
+    adapter = AsyncMock()
+    adapter.create_document.return_value = "doc-xyz"
+    adapter.batch_update_blocks.return_value = ["h1a", "t1", "h1b", "t2", "b1"]
+    # Simulates what get_document_blocks returns: heading1 (type=3), text (type=2), bullet (type=12)
+    adapter.get_document_blocks.return_value = [
+        {"block_id": "h1a", "block_type": 3},  # HEADING1 → 第一节
+        {"block_id": "t1", "block_type": 2},  # TEXT
+        {"block_id": "h1b", "block_type": 3},  # HEADING1 → 第二节
+        {"block_id": "t2", "block_type": 2},  # TEXT
+        {"block_id": "b1", "block_type": 12},  # BULLET
+    ]
+    adapter.get_share_url.return_value = ""
+
+    md = "# 第一节\n正文1\n\n# 第二节\n正文2\n- 要点\n"
+    artifact = await FeishuDocService(adapter).create_from_markdown("Doc", md, simple=True)
+
+    assert len(artifact.sections) == 2
+    # Section 0: heading + text → ["h1a", "t1"]
+    assert artifact.sections[0].title == "第一节"
+    assert artifact.sections[0].block_ids == ["h1a", "t1"]
+    # Section 1: heading + text + bullet → ["h1b", "t2", "b1"]
+    assert artifact.sections[1].title == "第二节"
+    assert artifact.sections[1].block_ids == ["h1b", "t2", "b1"]
+
+
+@pytest.mark.asyncio
+async def test_block_id_alignment_fewer_h1_blocks_than_sections() -> None:
+    """Trailing sections get empty block_ids when Feishu returns fewer HEADING1 blocks than H1s."""
+    adapter = AsyncMock()
+    adapter.create_document.return_value = "tok"
+    adapter.batch_update_blocks.return_value = []
+    # Only one HEADING1 block even though markdown has two sections
+    adapter.get_document_blocks.return_value = [
+        {"block_id": "h1", "block_type": 3},
+        {"block_id": "t1", "block_type": 2},
+    ]
+    adapter.get_share_url.return_value = ""
+
+    md = "# 节一\n内容\n\n# 节二\n内容2\n"
+    artifact = await FeishuDocService(adapter).create_from_markdown("Doc", md, simple=True)
+
+    assert artifact.sections[0].block_ids == ["h1", "t1"]
+    assert artifact.sections[1].block_ids == []

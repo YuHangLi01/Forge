@@ -58,37 +58,51 @@ class FeishuDocService:
         )
 
     def _align_sections(self, markdown: str, blocks: list[dict[str, object]]) -> list[DocSection]:
-        sections: list[DocSection] = []
+        from app.converters import feishu_block_types as bt
+
+        # Parse H1 boundaries from markdown
+        section_titles: list[str] = []
+        section_contents: list[list[str]] = []
         current_title = ""
         current_lines: list[str] = []
-        current_block_ids: list[str] = []
 
         for line in markdown.splitlines():
             if line.startswith("# "):
                 if current_title:
-                    sections.append(
-                        DocSection(
-                            id=f"section_{len(sections)}",
-                            title=current_title,
-                            content_md="\n".join(current_lines),
-                            block_ids=current_block_ids,
-                        )
-                    )
+                    section_titles.append(current_title)
+                    section_contents.append(current_lines)
                 current_title = line[2:].strip()
                 current_lines = []
-                current_block_ids = []
             else:
                 current_lines.append(line)
-
         if current_title:
+            section_titles.append(current_title)
+            section_contents.append(current_lines)
+
+        if not section_titles:
+            return []
+
+        # Positional match: Nth HEADING1 block in Feishu response → Nth H1 section
+        h1_positions = [i for i, blk in enumerate(blocks) if blk.get("block_type") == bt.HEADING1]
+
+        sections: list[DocSection] = []
+        for idx, title in enumerate(section_titles):
+            if idx < len(h1_positions):
+                start = h1_positions[idx]
+                end = h1_positions[idx + 1] if idx + 1 < len(h1_positions) else len(blocks)
+                section_block_ids = [
+                    str(blocks[i]["block_id"]) for i in range(start, end) if "block_id" in blocks[i]
+                ]
+            else:
+                section_block_ids = []
+
             sections.append(
                 DocSection(
-                    id=f"section_{len(sections)}",
-                    title=current_title,
-                    content_md="\n".join(current_lines),
-                    block_ids=current_block_ids,
+                    id=f"section_{idx}",
+                    title=title,
+                    content_md="\n".join(section_contents[idx]),
+                    block_ids=section_block_ids,
                 )
             )
 
-        _ = blocks  # block_id alignment requires Feishu block position API (T10 follow-up)
         return sections
