@@ -42,15 +42,19 @@ def code_block(language: str, code_text: str) -> dict[str, Any]:
     return {
         "block_type": bt.CODE,
         "code": {
-            "elements": [{"tag": "text_run", "content": code_text}],
+            "elements": [{"text_run": {"content": code_text}}],
             "style": {"language": lang, "wrap": False},
         },
     }
 
 
+def _plain_run(content: str) -> dict[str, Any]:
+    return {"text_run": {"content": content}}
+
+
 def table_block(rows: list[list[str]]) -> dict[str, Any]:
     if not rows:
-        return text_block([{"tag": "text_run", "content": "(empty table)"}])
+        return text_block([_plain_run("(empty table)")])
     col_count = max(len(r) for r in rows)
     row_count = len(rows)
     cells = []
@@ -59,14 +63,14 @@ def table_block(rows: list[list[str]]) -> dict[str, Any]:
             cells.append(
                 {
                     "block_type": bt.TEXT,
-                    "text": {"elements": [{"tag": "text_run", "content": cell_text}], "style": {}},
+                    "text": {"elements": [_plain_run(cell_text)], "style": {}},
                 }
             )
         for _ in range(col_count - len(row)):
             cells.append(
                 {
                     "block_type": bt.TEXT,
-                    "text": {"elements": [{"tag": "text_run", "content": ""}], "style": {}},
+                    "text": {"elements": [_plain_run("")], "style": {}},
                 }
             )
     return {
