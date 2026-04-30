@@ -20,23 +20,18 @@ _md = MarkdownIt().enable("table").enable("strikethrough")
 
 def md_to_feishu_blocks(
     markdown: str,
-    parent_block_id: str = "root",
+    parent_block_id: str = "root",  # noqa: ARG001 — kept for back-compat
 ) -> list[dict[str, Any]]:
-    """Convert Markdown string to Feishu batch_update_blocks request list.
+    """Convert Markdown string to a list of Feishu Block dicts.
 
-    Each item in the returned list represents one block creation request
-    compatible with the Feishu v2 document API.
+    Each entry is a raw Block payload (``{"block_type": ..., "<kind>": {...}}``)
+    suitable for the docx v1 ``create_document_block_children`` API as the
+    ``children`` array. ``parent_block_id`` is unused at this layer — the
+    adapter passes the actual parent (the document_id by default) when
+    invoking the API.
     """
     tokens = _md.parse(markdown)
-    blocks = _parse_token_stream(tokens)
-    return [
-        {
-            "action": "insert",
-            "payload": block,
-            "parent_block_id": parent_block_id,
-        }
-        for block in blocks
-    ]
+    return _parse_token_stream(tokens)
 
 
 def _parse_token_stream(tokens: list[Token]) -> list[dict[str, Any]]:

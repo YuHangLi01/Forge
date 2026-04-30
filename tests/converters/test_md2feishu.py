@@ -7,7 +7,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _blocks(md: str) -> list[dict]:
-    return [item["payload"] for item in md_to_feishu_blocks(md)]
+    """md_to_feishu_blocks now returns raw blocks directly (no wrapper)."""
+    return md_to_feishu_blocks(md)
 
 
 # ---- Heading blocks ----------------------------------------------------------
@@ -179,11 +180,14 @@ def test_empty_markdown() -> None:
 # ---- Output structure -------------------------------------------------------
 
 
-def test_output_has_action_and_payload() -> None:
+def test_output_is_raw_block_list() -> None:
+    """v2 API contract: each item is a Block dict (no insert/payload wrapper)."""
     result = md_to_feishu_blocks("# Title", parent_block_id="doc_123")
-    assert result[0]["action"] == "insert"
-    assert result[0]["parent_block_id"] == "doc_123"
-    assert "payload" in result[0]
+    assert isinstance(result, list)
+    assert "block_type" in result[0]
+    # No legacy wrapper keys
+    assert "action" not in result[0]
+    assert "parent_block_id" not in result[0]
 
 
 # ---- Fixture round-trip -----------------------------------------------------
@@ -195,9 +199,9 @@ def test_sample_doc_fixture() -> None:
     # Must produce at least one block per major section
     assert len(result) > 5
     # First block should be H1
-    assert result[0]["payload"]["block_type"] == bt.HEADING1
+    assert result[0]["block_type"] == bt.HEADING1
     # Must contain bullet blocks
-    block_types = [r["payload"]["block_type"] for r in result]
+    block_types = [r["block_type"] for r in result]
     assert bt.BULLET in block_types
     assert bt.CODE in block_types
     assert bt.TABLE in block_types
