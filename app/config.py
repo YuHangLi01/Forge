@@ -44,7 +44,27 @@ class Settings(BaseSettings):
     # ChromaDB
     CHROMA_HOST: str = Field(default="localhost", description="ChromaDB 服务主机")
     CHROMA_PORT: int = Field(default=8001, description="ChromaDB 服务端口")
-    CHROMA_COLLECTION_NAME: str = Field(default="forge_docs", description="ChromaDB 默认集合名称")
+    CHROMA_TENANT: str = Field(default="default_tenant", description="ChromaDB tenant 名")
+    CHROMA_COLLECTION_NAME: str = Field(default="forge_kb", description="ChromaDB 默认集合名称")
+
+    # Embedding model cache (bge-m3)
+    MODEL_CACHE_DIR: str = Field(
+        default="~/.cache/forge/models",
+        description="Embedding 模型缓存目录",
+    )
+
+    # LangSmith tracing (optional)
+    LANGSMITH_API_KEY: str = Field(
+        default="", description="LangSmith API key, 空字符串关闭 tracing"
+    )
+    LANGSMITH_PROJECT: str = Field(default="forge-dev", description="LangSmith project 名称")
+    LANGSMITH_TRACING: bool = Field(default=False, description="LangSmith tracing 总开关")
+
+    # Stage 2 graph rollout flag
+    FORGE_USE_GRAPH: bool = Field(
+        default=False,
+        description="True 时 message_tasks 走 LangGraph; False 沿用 Stage 1 直调路径",
+    )
 
     # Application
     APP_ENV: str = Field(default="dev", description="运行环境: dev | staging | prod")
