@@ -1,10 +1,9 @@
-import asyncio
 import json
 from typing import Any
 
 import structlog
 
-from app.tasks.base import forge_task
+from app.tasks.base import forge_task, run_sync
 
 logger = structlog.get_logger(__name__)
 
@@ -21,7 +20,7 @@ def handle_message_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  
     logger.info("message_received", event_id=event_id, message_type=message.get("message_type"))
 
     try:
-        return asyncio.run(_handle_message_async(payload))
+        return run_sync(_handle_message_async(payload))
     except SoftTimeLimitExceeded:
         # Extract message_id so we can send a timeout card to the user.
         msg_obj = message if isinstance(message, dict) else {}
@@ -29,7 +28,7 @@ def handle_message_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  
         logger.warning("handle_message_timeout", event_id=event_id, message_id=message_id)
         if message_id:
             try:
-                asyncio.run(_send_timeout_card_async(message_id))
+                run_sync(_send_timeout_card_async(message_id))
             except Exception:
                 logger.exception("timeout_card_failed", message_id=message_id)
         return {"status": "timeout", "event_id": event_id}
@@ -158,11 +157,11 @@ def resume_graph_task(self: Any, thread_id: str, chat_id: str = "") -> dict[str,
     from billiard.exceptions import SoftTimeLimitExceeded
 
     try:
-        return asyncio.run(_resume_graph_async(thread_id, chat_id))
+        return run_sync(_resume_graph_async(thread_id, chat_id))
     except SoftTimeLimitExceeded:
         logger.warning("resume_graph_timeout", thread_id=thread_id)
         try:
-            asyncio.run(_send_timeout_card_async(thread_id))
+            run_sync(_send_timeout_card_async(thread_id))
         except Exception:
             logger.exception("timeout_card_failed", thread_id=thread_id)
         return {"status": "timeout", "thread_id": thread_id}

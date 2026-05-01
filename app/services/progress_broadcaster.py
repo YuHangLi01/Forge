@@ -4,8 +4,14 @@ Rate limit: at most one update_card call per second per message_id.
 Throttle mechanism: Redis SETNX with EX 1. If the lock is already held,
 the payload is written to `progress_pending:{message_id}` (overwriting
 any prior unsent payload).  A Celery beat task (`flush_pending_progress`,
-scheduled every 200 ms in fast queue) drains the pending keys and sends
+scheduled every 2 s in fast queue) drains the pending keys and sends
 one final card update per message_id.
+
+Idempotency for first-card creation:
+  progress_card:{message_id} is set to "pending" (SETNX) before the async
+  reply_card call fires.  Any concurrent _send_update that sees "pending"
+  parks its payload in progress_pending instead of calling reply_card again.
+  Once reply_card returns the real card message_id it overwrites "pending".
 """
 
 from __future__ import annotations
@@ -23,7 +29,8 @@ _THROTTLE_KEY = "progress_throttle:{message_id}"
 _PENDING_KEY = "progress_pending:{message_id}"
 _CARD_ID_KEY = "progress_card:{message_id}"
 _THROTTLE_TTL = 1  # seconds
-_CARD_ID_TTL = 1800  # 30 minutes — covers longest expected task
+_CARD_ID_TTL = 1800  # 30 minutes
+_CARD_CREATING_TTL = 30  # seconds — max time to wait for first reply_card to complete
 
 
 class ProgressBroadcaster:
@@ -120,7 +127,12 @@ class ProgressBroadcaster:
             logger.exception("progress_broadcaster_send_failed", message_id=self.message_id)
 
     def _send_update(self, card: dict[str, Any]) -> None:
-        """Update the running progress card, creating it on first call."""
+        """Update the running progress card, creating it on first call.
+
+        Idempotency guarantee: uses Redis SETNX("pending") to ensure exactly
+        one reply_card call per message_id across concurrent node executions.
+        Callers that lose the SETNX race park their payload for flush instead.
+        """
         try:
             from app.config import get_settings
             from app.integrations.feishu.adapter import FeishuAdapter
@@ -128,30 +140,55 @@ class ProgressBroadcaster:
             settings = get_settings()
             r = redis.from_url(settings.REDIS_URL)  # type: ignore[no-untyped-call]
             card_key = _CARD_ID_KEY.format(message_id=self.message_id)
+            pending_key = _PENDING_KEY.format(message_id=self.message_id)
+
+            # Atomically claim "first sender" by setting card_key = "pending" (NX).
+            # If card_key already exists (either "pending" or a real card_id) we do
+            # NOT call reply_card — only update_card or park for flush.
+            is_first = r.set(card_key, "pending", nx=True, ex=_CARD_CREATING_TTL)
+            if is_first:
+                # We won the race — send reply_card and replace "pending" with real id.
+                adapter = FeishuAdapter()
+                msg_id = self.message_id
+
+                async def _reply_and_cache() -> None:
+                    new_id = await adapter.reply_card(msg_id, card)
+                    if new_id:
+                        r.set(card_key, new_id, ex=_CARD_ID_TTL)
+                    else:
+                        # Release the lock so a future call can retry.
+                        r.delete(card_key)
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(_reply_and_cache())
+                except RuntimeError:
+                    new_id = asyncio.run(adapter.reply_card(msg_id, card))
+                    if new_id:
+                        r.set(card_key, new_id, ex=_CARD_ID_TTL)
+                    else:
+                        r.delete(card_key)
+                return
+
+            # card_key already existed — check whether it's "pending" or a real id.
             raw = r.get(card_key)
             card_message_id: str | None = (
                 (raw.decode() if isinstance(raw, bytes) else raw) if raw else None
             )
+
+            if not card_message_id or card_message_id == "pending":
+                # First card is still being created; park for flush.
+                r.set(pending_key, json.dumps(card), ex=10)
+                return
+
+            # Real card_id available — update the existing card.
             adapter = FeishuAdapter()
             try:
                 loop = asyncio.get_running_loop()
-                if card_message_id:
-                    loop.create_task(adapter.update_card(card_message_id, card))
-                else:
-
-                    async def _reply_and_cache() -> None:
-                        new_id = await adapter.reply_card(self.message_id, card)
-                        if new_id:
-                            r.set(card_key, new_id, ex=_CARD_ID_TTL)
-
-                    loop.create_task(_reply_and_cache())
+                loop.create_task(adapter.update_card(card_message_id, card))
             except RuntimeError:
-                if card_message_id:
-                    asyncio.run(adapter.update_card(card_message_id, card))
-                else:
-                    new_id = asyncio.run(adapter.reply_card(self.message_id, card))
-                    if new_id:
-                        r.set(card_key, new_id, ex=_CARD_ID_TTL)
+                asyncio.run(adapter.update_card(card_message_id, card))
+
         except Exception:
             logger.exception("progress_broadcaster_send_failed", message_id=self.message_id)
 
@@ -187,13 +224,13 @@ def flush_pending_for_message(message_id: str) -> bool:
             (card_raw.decode() if isinstance(card_raw, bytes) else card_raw) if card_raw else None
         )
 
+        if not card_message_id or card_message_id == "pending":
+            # First card is still being created — re-park and retry next cycle.
+            r.set(pending_key, json.dumps(card), ex=10)
+            return False
+
         adapter = FeishuAdapter()
-        if card_message_id:
-            asyncio.run(adapter.update_card(card_message_id, card))
-        else:
-            new_id = asyncio.run(adapter.reply_card(message_id, card))
-            if new_id:
-                r.set(card_key, new_id, ex=_CARD_ID_TTL)
+        asyncio.run(adapter.update_card(card_message_id, card))
         return True
     except Exception:
         logger.exception("flush_pending_failed", message_id=message_id)

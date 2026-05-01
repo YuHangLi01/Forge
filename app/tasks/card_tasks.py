@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import structlog
 
-from app.tasks.base import forge_task
+from app.tasks.base import forge_task, run_sync
 
 logger = structlog.get_logger(__name__)
 
@@ -14,7 +13,7 @@ logger = structlog.get_logger(__name__)
 def handle_card_action_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
     """Handle Feishu interactive card button clicks."""
     logger.info("card_action_received", payload=payload)
-    return asyncio.run(_handle_card_action_async(payload))
+    return run_sync(_handle_card_action_async(payload))
 
 
 async def _handle_card_action_async(payload: dict[str, Any]) -> dict[str, Any]:

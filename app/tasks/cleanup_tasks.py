@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from typing import Any
 
 import structlog
 
-from app.tasks.base import forge_task
+from app.tasks.base import forge_task, run_sync
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +25,7 @@ def expire_clarify_actions(self: Any) -> dict[str, Any]:  # noqa: ARG001
       2. Sends a Feishu text message to the chat.
       3. Removes the Redis key.
     """
-    return asyncio.run(_expire_clarify_actions_async())
+    return run_sync(_expire_clarify_actions_async())
 
 
 async def _expire_clarify_actions_async() -> dict[str, Any]:
@@ -130,7 +129,7 @@ def flush_pending_progress(self: Any) -> dict[str, Any]:  # noqa: ARG001
     pending card payload (overwritten by ProgressBroadcaster._emit when the
     1-second throttle is held).  We send it and delete the key atomically.
     """
-    return asyncio.run(_flush_pending_progress_async())
+    return run_sync(_flush_pending_progress_async())
 
 
 async def _flush_pending_progress_async() -> dict[str, Any]:
