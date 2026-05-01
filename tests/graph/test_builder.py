@@ -1,7 +1,5 @@
 """Tests for build_graph — verifies the StateGraph compiles and all nodes are registered."""
 
-import pytest
-
 from app.graph.builder import ALL_NODES, WORK_NODES, build_graph
 
 
@@ -31,43 +29,25 @@ def test_build_graph_returns_different_instances() -> None:
     assert g1 is not g2
 
 
-@pytest.mark.asyncio
-async def test_graph_can_invoke_end_to_end() -> None:
-    """Stub graph reaches END when plan has no remaining steps.
-
-    With stub nodes (all returning {}), state never changes on its own.
-    We prime the state so step_router immediately routes to END via the
-    plan-driven path, avoiding infinite recursion.
+def test_every_work_node_has_real_coroutine_implementation() -> None:
+    """Regression guard: a previous build_graph wired every work node to
+    `_stub_node` (returns {}), causing step_router to loop and trip
+    GraphRecursionError on first message. Verify each WORK_NODES entry
+    has a real `<name>_node` coroutine in app.graph.nodes.<name>.
     """
-    from unittest.mock import MagicMock
+    import importlib
+    import inspect
 
-    compiled = build_graph(None)
-
-    # Build a mock plan whose next_runnable_step always returns None (all done)
-    done_plan = MagicMock()
-    done_plan.next_runnable_step.return_value = None
-
-    # Build a mock intent that is clear (low ambiguity, create_new)
-    from app.schemas.enums import TaskType
-
-    clear_intent = MagicMock()
-    clear_intent.task_type = TaskType.create_new
-    clear_intent.ambiguity_score = 0.0
-
-    result = await compiled.ainvoke(
-        {
-            "task_id": "t1",
-            "user_id": "u1",
-            "chat_id": "c1",
-            "message_id": "m1",
-            "raw_input": "hello",
-            "completed_steps": ["context_retrieval"],  # retrieval already done
-            "modification_history": [],
-            "intent": clear_intent,
-            "plan": done_plan,
-        }
-    )
-    assert result is not None
+    for node_name in WORK_NODES:
+        module = importlib.import_module(f"app.graph.nodes.{node_name}")
+        fn = getattr(module, f"{node_name}_node", None)
+        assert fn is not None, f"missing {node_name}_node in app.graph.nodes.{node_name}"
+        unwrapped = fn
+        while hasattr(unwrapped, "__wrapped__"):
+            unwrapped = unwrapped.__wrapped__
+        assert inspect.iscoroutinefunction(
+            unwrapped
+        ), f"{node_name}_node is not a coroutine: {fn!r}"
 
 
 def test_get_graph_singleton_returns_same_instance() -> None:

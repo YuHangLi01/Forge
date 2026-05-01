@@ -78,26 +78,53 @@ _ROUTER_TARGETS: dict[str, str] = {
 _ROUTER_TARGETS[END] = END
 
 
-async def _stub_node(state: dict[str, Any]) -> dict[str, Any]:
-    return {}
-
-
 def build_graph(checkpointer: Any = None) -> Any:
     """Build and compile the Forge StateGraph.
 
     Spider-graph topology: every work node feeds into step_router, which
     conditionally routes to the next work node (or END / error_handler).
-    Individual node implementations land in T06-T11; step_router routing
-    logic is in app.graph.nodes.step_router.route().
+    step_router routing logic is in app.graph.nodes.step_router.route().
     """
+    from app.graph.nodes.clarify_question import clarify_question_node
+    from app.graph.nodes.clarify_resume import clarify_resume_node
+    from app.graph.nodes.context_retrieval import context_retrieval_node
+    from app.graph.nodes.doc_content_gen import doc_content_gen_node
+    from app.graph.nodes.doc_section_editor import doc_section_editor_node
+    from app.graph.nodes.doc_structure_gen import doc_structure_gen_node
     from app.graph.nodes.error_handler import error_handler_node
+    from app.graph.nodes.feishu_doc_write import feishu_doc_write_node
+    from app.graph.nodes.feishu_ppt_write import feishu_ppt_write_node
+    from app.graph.nodes.intent_parser import intent_parser_node
+    from app.graph.nodes.mod_intent_parser import mod_intent_parser_node
+    from app.graph.nodes.planner import planner_node
+    from app.graph.nodes.ppt_content_gen import ppt_content_gen_node
+    from app.graph.nodes.ppt_slide_editor import ppt_slide_editor_node
+    from app.graph.nodes.ppt_structure_gen import ppt_structure_gen_node
+    from app.graph.nodes.preprocess import preprocess_node
     from app.graph.nodes.step_router import route, step_router_node
+
+    work_node_impls: dict[str, Any] = {
+        "preprocess": preprocess_node,
+        "intent_parser": intent_parser_node,
+        "clarify_question": clarify_question_node,
+        "clarify_resume": clarify_resume_node,
+        "context_retrieval": context_retrieval_node,
+        "planner": planner_node,
+        "doc_structure_gen": doc_structure_gen_node,
+        "doc_content_gen": doc_content_gen_node,
+        "feishu_doc_write": feishu_doc_write_node,
+        "mod_intent_parser": mod_intent_parser_node,
+        "doc_section_editor": doc_section_editor_node,
+        "ppt_structure_gen": ppt_structure_gen_node,
+        "ppt_content_gen": ppt_content_gen_node,
+        "feishu_ppt_write": feishu_ppt_write_node,
+        "ppt_slide_editor": ppt_slide_editor_node,
+    }
 
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)
 
-    # Register all nodes — work nodes as stubs, step_router with real logic
     for node_name in WORK_NODES:
-        graph.add_node(node_name, _stub_node)  # type: ignore[type-var]
+        graph.add_node(node_name, work_node_impls[node_name])  # type: ignore[type-var]
     graph.add_node("step_router", step_router_node)  # type: ignore[type-var]
     graph.add_node("error_handler", error_handler_node)
 

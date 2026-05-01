@@ -22,7 +22,14 @@ def parse_message(payload: dict[str, Any]) -> ParsedMessage:
     event_id: str = header.get("event_id", "")
     message_id: str = message.get("message_id", "")
     chat_id: str = message.get("chat_id", "")
-    sender_user_id: str = sender.get("sender_id", {}).get("user_id", "")
+    # user_id needs "contact:user.employee_id:readonly"; open_id is always present.
+    sender_id_obj: dict[str, Any] = sender.get("sender_id") or {}
+    sender_user_id: str = (
+        sender_id_obj.get("user_id")
+        or sender_id_obj.get("open_id")
+        or sender_id_obj.get("union_id")
+        or ""
+    )
     raw_type: str = message.get("message_type", "")
     content = message.get("content") or "{}"
 
