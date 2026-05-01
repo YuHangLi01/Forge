@@ -9,6 +9,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.artifacts import DocArtifact, DocSection
+from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
@@ -20,6 +21,9 @@ async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     import app.prompts.doc_content  # noqa: F401
     from app.prompts._versioning import get as get_prompt
     from app.services.llm_service import LLMService
+
+    message_id: str = state.get("message_id", "")
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
 
     raw_outline: dict[str, Any] = state.get("doc_outline") or {}
     doc_title: str = raw_outline.get("document_title", "文档")
@@ -50,6 +54,8 @@ async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
                     if s.id == sec_id:
                         return s
             return DocSection(id=sec_id, title=sec_title, content_md="")
+
+        pb.begin_node(f"✍️ 正在撰写「{sec_title}」")
 
         filled = prompt_version.text.format(
             doc_title=doc_title,

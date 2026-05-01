@@ -14,6 +14,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.enums import TaskType
+from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
@@ -24,6 +25,9 @@ _TOP_K = 5
 async def context_retrieval_node(state: dict[str, Any]) -> dict[str, Any]:
     intent = state.get("intent")
     user_id: str = state.get("user_id", "")
+    message_id: str = state.get("message_id", "")
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node("📚 检索背景资料")
 
     # Modification path: existing doc context is sufficient; skip retrieval.
     if intent is not None and getattr(intent, "task_type", None) == TaskType.modify_existing:
@@ -51,6 +55,7 @@ async def context_retrieval_node(state: dict[str, Any]) -> dict[str, Any]:
             query_len=len(query),
             result_count=len(results),
         )
+        pb.update_thinking(f"检索到 {len(results)} 条相关资料")
     except Exception:
         logger.exception("context_retrieval_failed", user_id=user_id)
         results = []
