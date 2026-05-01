@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     CHROMA_TENANT: str = Field(default="default_tenant", description="ChromaDB tenant 名")
     CHROMA_COLLECTION_NAME: str = Field(default="forge_kb", description="ChromaDB 默认集合名称")
 
-    # Embedding model cache (bge-m3)
+    # Embedding model cache (bge-base-zh-v1.5)
     MODEL_CACHE_DIR: str = Field(
         default="~/.cache/forge/models",
         description="Embedding 模型缓存目录",
