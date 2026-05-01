@@ -32,6 +32,9 @@ done
 git reset --hard origin/main
 
 echo "==> [deploy] removing stale venv to avoid cross-user ownership conflicts"
+# If root (or another user) manually ran uv sync, files may be root-owned.
+# Reassign ownership to current deploy user before deleting.
+chown -R "$(id -u):$(id -g)" .venv 2>/dev/null || true
 rm -rf .venv
 
 echo "==> [deploy] uv sync (skipping ml extras — sentence-transformers/torch not needed on API/worker)"
