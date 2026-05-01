@@ -11,7 +11,7 @@ def test_config_loads_from_env(mock_env: None) -> None:
     assert settings.DOUBAO_MODEL_PRO == "ep-20241230000000-xxxxx"
     assert settings.APP_ENV == "dev"
     assert settings.API_PORT == 8000
-    assert settings.CELERY_TASK_TIME_LIMIT == 180
+    assert settings.CELERY_TASK_TIME_LIMIT == 360
 
 
 def test_config_defaults(mock_env: None) -> None:
