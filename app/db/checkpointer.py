@@ -19,8 +19,15 @@ async def create_checkpointer() -> object:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
         # AsyncConnectionPool needs a libpq-style URL (no SQLAlchemy driver prefix).
+        # autocommit=True + prepare_threshold=0 are required by LangGraph's setup():
+        # CREATE INDEX CONCURRENTLY cannot run inside a transaction block, and
+        # prepared statements are incompatible with LangGraph's explicit transactions.
         db_url = settings.DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)
-        pool = AsyncConnectionPool(db_url, open=False)
+        pool = AsyncConnectionPool(
+            db_url,
+            open=False,
+            kwargs={"autocommit": True, "prepare_threshold": 0},
+        )
         await pool.open()
         checkpointer = AsyncPostgresSaver(pool)  # type: ignore[arg-type]
         await checkpointer.setup()
