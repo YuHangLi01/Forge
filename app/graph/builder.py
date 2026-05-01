@@ -124,7 +124,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)
 
     for node_name in WORK_NODES:
-        graph.add_node(node_name, work_node_impls[node_name])  # type: ignore[type-var]
+        graph.add_node(node_name, work_node_impls[node_name])
     graph.add_node("step_router", step_router_node)  # type: ignore[type-var]
     graph.add_node("error_handler", error_handler_node)
 
