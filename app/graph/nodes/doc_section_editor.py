@@ -141,8 +141,11 @@ async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
     if share_url:
         pb.emit_artifact(label=f"✅ 已修改「{scope_identifier}」", url=share_url)
 
+    from app.schemas.enums import TaskStatus
+
     return {
         "doc": updated_doc,
         "modification_history": [record],
         "mod_intent": None,
+        "status": TaskStatus.completed,
     }

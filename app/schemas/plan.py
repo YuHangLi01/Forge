@@ -18,9 +18,12 @@ class PlanSchema(BaseModel):
     total_estimated_seconds: int = Field(default=0, ge=0)
 
     def next_runnable_step(self, completed: set[str]) -> PlanStep | None:
+        # completed contains node_names (e.g. "doc_structure_gen"), not step ids.
+        # depends_on contains step ids — resolve them to node_names for the check.
+        id_to_node = {s.id: s.node_name for s in self.steps}
         for step in self.steps:
-            if step.id in completed:
+            if step.node_name in completed:
                 continue
-            if all(dep in completed for dep in step.depends_on):
+            if all(id_to_node.get(dep, dep) in completed for dep in step.depends_on):
                 return step
         return None

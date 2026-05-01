@@ -73,8 +73,8 @@ class Settings(BaseSettings):
     API_PORT: int = Field(default=8000, description="FastAPI 监听端口")
 
     # Celery
-    CELERY_TASK_TIME_LIMIT: int = Field(default=180, description="任务硬超时秒数")
-    CELERY_TASK_SOFT_TIME_LIMIT: int = Field(default=150, description="任务软超时秒数")
+    CELERY_TASK_TIME_LIMIT: int = Field(default=360, description="任务硬超时秒数")
+    CELERY_TASK_SOFT_TIME_LIMIT: int = Field(default=300, description="任务软超时秒数")
     CELERY_WORKER_CONCURRENCY: int = Field(default=4, description="Celery Worker 并发数")
 
     # Feature stage

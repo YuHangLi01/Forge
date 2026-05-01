@@ -85,4 +85,4 @@ async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     doc = DocArtifact(doc_id="", title=doc_title, sections=list(sections))
 
     logger.info("doc_content_gen_done", n_sections=len(sections), total_chars=len(full_md))
-    return {"doc": doc, "doc_markdown": full_md}
+    return {"doc": doc, "doc_markdown": full_md, "completed_steps": ["doc_content_gen"]}

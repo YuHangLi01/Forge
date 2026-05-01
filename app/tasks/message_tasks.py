@@ -11,6 +11,8 @@ logger = structlog.get_logger(__name__)
 
 @forge_task(name="forge.handle_message", queue="slow")  # type: ignore[untyped-decorator]
 def handle_message_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+    from billiard.exceptions import SoftTimeLimitExceeded
+
     event = payload.get("event", {})
     message = event.get("message", {}) if isinstance(event, dict) else {}
     raw_header = payload.get("header")
@@ -18,7 +20,19 @@ def handle_message_task(self: Any, payload: dict[str, Any]) -> dict[str, Any]:  
 
     logger.info("message_received", event_id=event_id, message_type=message.get("message_type"))
 
-    return asyncio.run(_handle_message_async(payload))
+    try:
+        return asyncio.run(_handle_message_async(payload))
+    except SoftTimeLimitExceeded:
+        # Extract message_id so we can send a timeout card to the user.
+        msg_obj = message if isinstance(message, dict) else {}
+        message_id: str = msg_obj.get("message_id", "")
+        logger.warning("handle_message_timeout", event_id=event_id, message_id=message_id)
+        if message_id:
+            try:
+                asyncio.run(_send_timeout_card_async(message_id))
+            except Exception:
+                logger.exception("timeout_card_failed", message_id=message_id)
+        return {"status": "timeout", "event_id": event_id}
 
 
 async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
@@ -141,7 +155,29 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
 @forge_task(name="forge.resume_graph", queue="slow")  # type: ignore[untyped-decorator]
 def resume_graph_task(self: Any, thread_id: str, chat_id: str = "") -> dict[str, Any]:
     """Continue a suspended LangGraph thread (after plan confirm, clarify submit, etc.)."""
-    return asyncio.run(_resume_graph_async(thread_id, chat_id))
+    from billiard.exceptions import SoftTimeLimitExceeded
+
+    try:
+        return asyncio.run(_resume_graph_async(thread_id, chat_id))
+    except SoftTimeLimitExceeded:
+        logger.warning("resume_graph_timeout", thread_id=thread_id)
+        try:
+            asyncio.run(_send_timeout_card_async(thread_id))
+        except Exception:
+            logger.exception("timeout_card_failed", thread_id=thread_id)
+        return {"status": "timeout", "thread_id": thread_id}
+
+
+async def _send_timeout_card_async(message_id: str) -> None:
+    """Send a timeout card replying to the original user message."""
+    from app.graph.cards.templates import timeout_card
+    from app.integrations.feishu.adapter import FeishuAdapter
+
+    card = timeout_card(thread_id=message_id)
+    try:
+        await FeishuAdapter().reply_card(message_id, card)
+    except Exception:
+        logger.exception("timeout_card_send_failed", message_id=message_id)
 
 
 async def _resume_graph_async(thread_id: str, chat_id: str) -> dict[str, Any]:

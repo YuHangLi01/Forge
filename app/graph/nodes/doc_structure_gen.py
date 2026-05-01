@@ -8,6 +8,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.doc_outline import DocOutline, DocOutlineSection
+from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
@@ -26,6 +27,10 @@ async def doc_structure_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     import app.prompts.doc_structure  # noqa: F401
     from app.prompts._versioning import get as get_prompt
     from app.services.llm_service import LLMService
+
+    message_id: str = state.get("message_id", "")
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node("📝 生成文档结构")
 
     intent = state.get("intent")
     context: list[dict[str, Any]] = state.get("retrieved_context") or []
@@ -57,4 +62,4 @@ async def doc_structure_gen_node(state: dict[str, Any]) -> dict[str, Any]:
         title=outline.document_title,
         n_sections=len(outline.sections),
     )
-    return {"doc_outline": outline.model_dump()}
+    return {"doc_outline": outline.model_dump(), "completed_steps": ["doc_structure_gen"]}

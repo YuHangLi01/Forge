@@ -118,6 +118,11 @@ async def _try_cancel_active_task(chat_id: str, cancel_message_id: str) -> None:
             other_config,
             {"status": TaskStatus.cancelled, "pending_user_action": None, "error": "用户取消"},
         )
+        # Dispatch graph continuation so step_router routes to error_handler
+        # (the state update alone doesn't wake a suspended thread).
+        from app.tasks.message_tasks import resume_graph_task
+
+        resume_graph_task.delay(other_thread_id)
         logger.info("active_task_cancelled", thread_id=other_thread_id, chat_id=chat_id)
     except Exception:
         logger.exception("cancel_active_task_failed", chat_id=chat_id)

@@ -51,4 +51,4 @@ async def feishu_doc_write_node(state: dict[str, Any]) -> dict[str, Any]:
     if doc.share_url:
         pb.emit_artifact(label=title, url=doc.share_url)
 
-    return {"doc": doc, "status": TaskStatus.completed}
+    return {"doc": doc, "status": TaskStatus.completed, "completed_steps": ["feishu_doc_write"]}
