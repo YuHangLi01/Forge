@@ -22,17 +22,25 @@ _MODEL_NAME = "BAAI/bge-m3"
 @lru_cache(maxsize=1)
 def _get_model() -> Any:
     """Load bge-m3 once; cached for the lifetime of the process."""
+    import os
+
     from sentence_transformers import SentenceTransformer
 
     from app.config import get_settings
 
     settings = get_settings()
-    default_cache = Path.home() / ".cache" / "forge" / "models" / "bge-m3"
-    cache_dir = Path(getattr(settings, "MODEL_CACHE_DIR", default_cache))
+    default_cache = Path.home() / ".cache" / "forge" / "models"
+    cache_dir = Path(getattr(settings, "MODEL_CACHE_DIR", str(default_cache))).expanduser()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # Set HUGGINGFACE_HUB_CACHE so hf_hub_download uses exactly one cache location.
+    # Passing cache_folder= to SentenceTransformer causes a split-cache bug: hf_hub
+    # finds the blob in a different user's cache (new_blob=False) but creates the
+    # snapshot symlink in the custom cache, where the blob isn't present → ENOENT.
+    os.environ["HUGGINGFACE_HUB_CACHE"] = str(cache_dir)
+
     logger.info("embedding_model_loading", model=_MODEL_NAME, cache_dir=str(cache_dir))
-    model = SentenceTransformer(_MODEL_NAME, cache_folder=str(cache_dir))
+    model = SentenceTransformer(_MODEL_NAME)
     logger.info("embedding_model_ready", model=_MODEL_NAME)
     return model
 
