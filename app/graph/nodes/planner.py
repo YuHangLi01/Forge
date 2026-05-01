@@ -9,6 +9,7 @@ import structlog
 from app.graph.nodes._decorator import graph_node
 from app.graph.nodes._validators import build_available_nodes_prompt, get_allowed_nodes
 from app.schemas.plan import PlanSchema, PlanStep
+from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
@@ -88,6 +89,10 @@ async def planner_node(state: dict[str, Any]) -> dict[str, Any]:
     from app.prompts._versioning import get as get_prompt
     from app.services.llm_service import LLMService
 
+    message_id: str = state.get("message_id", "")
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node("📋 制定执行计划")
+
     intent = state.get("intent")
     context: list[dict[str, Any]] = state.get("retrieved_context") or []
 
@@ -135,4 +140,15 @@ async def planner_node(state: dict[str, Any]) -> dict[str, Any]:
         steps=[s.node_name for s in plan.steps],
         total_seconds=plan.total_estimated_seconds,
     )
-    return {"plan": plan}
+
+    steps_preview = [
+        {"node_name": s.node_name, "estimated_seconds": s.estimated_seconds} for s in plan.steps
+    ]
+    pb.emit_plan_preview(steps=steps_preview, total_seconds=plan.total_estimated_seconds)
+
+    pending_action = {
+        "kind": "plan_confirm",
+        "thread_id": message_id,
+        "plan_steps": steps_preview,
+    }
+    return {"plan": plan, "pending_user_action": pending_action}

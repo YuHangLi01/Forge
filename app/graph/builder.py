@@ -90,6 +90,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     Individual node implementations land in T06-T11; step_router routing
     logic is in app.graph.nodes.step_router.route().
     """
+    from app.graph.nodes.error_handler import error_handler_node
     from app.graph.nodes.step_router import route, step_router_node
 
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)
@@ -98,7 +99,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     for node_name in WORK_NODES:
         graph.add_node(node_name, _stub_node)  # type: ignore[type-var]
     graph.add_node("step_router", step_router_node)  # type: ignore[type-var]
-    graph.add_node("error_handler", _stub_node)  # type: ignore[type-var]
+    graph.add_node("error_handler", error_handler_node)
 
     # Entry point
     graph.set_entry_point("preprocess")

@@ -72,6 +72,22 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
         logger.exception("task_create_db_failed", task_id=task_id)
 
     config = {"configurable": {"thread_id": msg.message_id or msg.event_id}}
+    thread_id: str = msg.message_id or msg.event_id or ""
+
+    # FIX-4: register active task so a "取消" message in the same chat can cancel it
+    if msg.chat_id and thread_id:
+        try:
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings as _get_settings
+
+            settings_now = _get_settings()
+            r: aioredis.Redis = aioredis.from_url(settings_now.REDIS_URL)  # type: ignore[no-untyped-call]
+            async with r:
+                await r.setex(f"active_task:{msg.chat_id}", 600, thread_id)
+        except Exception:
+            logger.exception("active_task_register_failed", chat_id=msg.chat_id)
+
     try:
         graph = get_graph()
         result = await graph.ainvoke(initial_state, config=config)
@@ -85,6 +101,7 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
         except Exception:
             logger.exception("task_update_db_failed", task_id=task_id)
 
+        _clear_active_task(msg.chat_id, thread_id)
         return {"status": "completed", "message_id": msg.message_id}
     except Exception as exc:
         logger.exception("graph_failed", message_id=msg.message_id, error=str(exc))
@@ -95,7 +112,26 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
         except Exception:
             logger.exception("task_fail_update_db_failed", task_id=task_id)
 
+        _clear_active_task(msg.chat_id, thread_id)
         return {"status": "error", "error": str(exc)}
+
+
+def _clear_active_task(chat_id: str, thread_id: str) -> None:
+    """Remove active_task Redis key if it still points to this thread."""
+    if not chat_id or not thread_id:
+        return
+    try:
+        import redis
+
+        from app.config import get_settings
+
+        r = redis.from_url(get_settings().REDIS_URL)  # type: ignore[no-untyped-call]
+        key = f"active_task:{chat_id}"
+        raw = r.get(key)
+        if raw and (raw.decode() if isinstance(raw, bytes) else raw) == thread_id:
+            r.delete(key)
+    except Exception:
+        logger.exception("active_task_clear_failed", chat_id=chat_id)
 
 
 async def _handle_stage1(msg: Any) -> dict[str, Any]:

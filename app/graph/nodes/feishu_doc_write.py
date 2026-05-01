@@ -8,6 +8,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.enums import TaskStatus
+from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
@@ -16,6 +17,10 @@ logger = structlog.get_logger(__name__)
 async def feishu_doc_write_node(state: dict[str, Any]) -> dict[str, Any]:
     from app.integrations.feishu.adapter import FeishuAdapter
     from app.services.feishu_doc_service import FeishuDocService
+
+    message_id: str = state.get("message_id", "")
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node("📤 上传飞书文档")
 
     doc_markdown: str = state.get("doc_markdown", "")
     in_mem_doc = state.get("doc")
@@ -42,4 +47,8 @@ async def feishu_doc_write_node(state: dict[str, Any]) -> dict[str, Any]:
         share_url=doc.share_url,
         n_sections=len(doc.sections),
     )
+
+    if doc.share_url:
+        pb.emit_artifact(label=title, url=doc.share_url)
+
     return {"doc": doc, "status": TaskStatus.completed}

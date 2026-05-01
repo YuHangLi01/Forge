@@ -108,7 +108,13 @@ class ProgressBroadcaster:
             from app.integrations.feishu.adapter import FeishuAdapter
 
             adapter = FeishuAdapter()
-            asyncio.run(adapter.update_card(self.message_id, card))
+            try:
+                loop = asyncio.get_running_loop()
+                # Running inside async context (graph nodes) — schedule as fire-and-forget task
+                loop.create_task(adapter.update_card(self.message_id, card))
+            except RuntimeError:
+                # No running loop (Celery sync task) — block until done
+                asyncio.run(adapter.update_card(self.message_id, card))
         except Exception:
             logger.exception("progress_broadcaster_send_failed", message_id=self.message_id)
 

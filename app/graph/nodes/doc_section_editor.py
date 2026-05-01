@@ -8,6 +8,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.modification import ModificationRecord
+from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
@@ -17,6 +18,10 @@ _MAX_HISTORY = 50
 @graph_node("doc_section_editor")
 async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
     from app.services.llm_service import LLMService
+
+    message_id: str = state.get("message_id", "")
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node("✏️ 修改文档章节")
 
     mod_intent = state.get("mod_intent")
     doc = state.get("doc")
@@ -130,6 +135,12 @@ async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         section=target_section.title,
         history_len=len(new_history),
     )
+
+    doc = state.get("doc")
+    share_url: str = getattr(doc, "share_url", "") or ""
+    if share_url:
+        pb.emit_artifact(label=f"✅ 已修改「{scope_identifier}」", url=share_url)
+
     return {
         "doc": updated_doc,
         "modification_history": [record],
