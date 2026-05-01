@@ -62,6 +62,14 @@ def test_validate_plan_empty_steps() -> None:
     assert _validate_plan(PlanSchema(steps=[], total_estimated_seconds=0)) is False
 
 
+def test_validate_plan_missing_prerequisites() -> None:
+    plan = PlanSchema(
+        steps=[PlanStep(id="step_1", node_name="feishu_doc_write", depends_on=[])],
+        total_estimated_seconds=5,
+    )
+    assert _validate_plan(plan) is False
+
+
 # ── planner_node integration tests ───────────────────────────────────────────
 
 

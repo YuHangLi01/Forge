@@ -28,7 +28,8 @@ async def feishu_doc_write_node(state: dict[str, Any]) -> dict[str, Any]:
 
     if not doc_markdown.strip():
         logger.warning("feishu_doc_write_empty_markdown")
-        return {}
+        pb.emit_error("文档内容未生成，请重新发送请求")
+        return {"status": TaskStatus.completed, "completed_steps": ["feishu_doc_write"]}
 
     adapter = FeishuAdapter()
     svc = FeishuDocService(adapter)

@@ -33,6 +33,14 @@ _TEMPLATE_PLAN = PlanSchema(
 )
 
 
+# Nodes that require other nodes to be present in the same plan.
+# feishu_doc_write needs content, which needs a structure.
+_NODE_PREREQUISITES: dict[str, set[str]] = {
+    "feishu_doc_write": {"doc_content_gen"},
+    "doc_content_gen": {"doc_structure_gen"},
+}
+
+
 def _validate_plan(plan: PlanSchema) -> bool:
     """Return True if the plan passes structural validation."""
     ids = {s.id for s in plan.steps}
@@ -43,9 +51,18 @@ def _validate_plan(plan: PlanSchema) -> bool:
     from app.config import get_settings
 
     allowed = get_allowed_nodes(get_settings().FORGE_STAGE)
+    plan_nodes = {s.node_name for s in plan.steps}
     for step in plan.steps:
         if step.node_name not in allowed:
             logger.warning("plan_invalid_node", node_name=step.node_name)
+            return False
+
+    # Semantic prerequisites — e.g. feishu_doc_write requires doc_content_gen to also be in plan
+    for step in plan.steps:
+        required = _NODE_PREREQUISITES.get(step.node_name, set())
+        missing = required - plan_nodes
+        if missing:
+            logger.warning("plan_missing_prerequisites", node=step.node_name, missing=list(missing))
             return False
 
     # Dependency closure — all deps must exist
