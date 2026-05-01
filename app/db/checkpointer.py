@@ -18,7 +18,9 @@ async def create_checkpointer() -> object:
     try:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-        pool = AsyncConnectionPool(settings.DATABASE_URL, open=False)
+        # AsyncConnectionPool needs a libpq-style URL (no SQLAlchemy driver prefix).
+        db_url = settings.DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)
+        pool = AsyncConnectionPool(db_url, open=False)
         await pool.open()
         checkpointer = AsyncPostgresSaver(pool)  # type: ignore[arg-type]
         await checkpointer.setup()
