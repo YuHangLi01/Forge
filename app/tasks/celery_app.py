@@ -41,7 +41,10 @@ celery_app.conf.update(
         },
         "flush-pending-progress": {
             "task": "forge.flush_pending_progress",
-            "schedule": 0.2,  # every 200 ms
+            "schedule": 2.0,  # every 2 s — throttle window is 400 ms; 2 s is plenty
+            # Drop scheduled flushes that sit in the queue >5 s instead of
+            # backlogging when worker concurrency is low.
+            "options": {"expires": 5},
         },
     },
 )
