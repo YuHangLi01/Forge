@@ -7,11 +7,10 @@ from typing import Any
 import structlog
 
 from app.graph.nodes._decorator import graph_node
+from app.graph.nodes._validators import build_available_nodes_prompt, get_allowed_nodes
 from app.schemas.plan import PlanSchema, PlanStep
 
 logger = structlog.get_logger(__name__)
-
-_ALLOWED_NODES = frozenset(["doc_structure_gen", "doc_content_gen", "feishu_doc_write"])
 
 _TEMPLATE_PLAN = PlanSchema(
     steps=[
@@ -39,9 +38,12 @@ def _validate_plan(plan: PlanSchema) -> bool:
     if not ids:
         return False
 
-    # Node whitelist
+    # Node whitelist (stage-gated)
+    from app.config import get_settings
+
+    allowed = get_allowed_nodes(get_settings().FORGE_STAGE)
     for step in plan.steps:
-        if step.node_name not in _ALLOWED_NODES:
+        if step.node_name not in allowed:
             logger.warning("plan_invalid_node", node_name=step.node_name)
             return False
 
@@ -100,14 +102,15 @@ async def planner_node(state: dict[str, Any]) -> dict[str, Any]:
     context_summary = "\n".join(c.get("text", "")[:200] for c in context[:3]) or "（无背景资料）"
 
     prompt_version = get_prompt("planner")
-    from app.prompts.planner import AVAILABLE_NODES
+    from app.config import get_settings
 
+    available_nodes = build_available_nodes_prompt(get_settings().FORGE_STAGE)
     filled = prompt_version.text.format(
         primary_goal=primary_goal,
         task_type=task_type,
         output_formats=", ".join(output_formats),
         context_summary=context_summary,
-        available_nodes=AVAILABLE_NODES,
+        available_nodes=available_nodes,
     )
 
     llm = LLMService()

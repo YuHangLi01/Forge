@@ -6,7 +6,7 @@ from langgraph.graph import END, StateGraph
 
 from app.graph.state import AgentState
 
-# 11 work nodes — stubs in T01; individual implementations land in T06-T11.
+# Work nodes — Stage 2: doc pipeline; Stage 3: +ppt pipeline.
 WORK_NODES: list[str] = [
     "preprocess",
     "intent_parser",
@@ -14,11 +14,17 @@ WORK_NODES: list[str] = [
     "clarify_resume",
     "context_retrieval",
     "planner",
+    # doc pipeline (Stage 2)
     "doc_structure_gen",
     "doc_content_gen",
     "feishu_doc_write",
     "mod_intent_parser",
     "doc_section_editor",
+    # ppt pipeline (Stage 3)
+    "ppt_structure_gen",
+    "ppt_content_gen",
+    "feishu_ppt_write",
+    "ppt_slide_editor",
 ]
 
 # Routing/terminal nodes
@@ -33,11 +39,17 @@ _ROUTED_WORK_NODES: list[str] = [
     "clarify_resume",
     "context_retrieval",
     "planner",
+    # doc pipeline
     "doc_structure_gen",
     "doc_content_gen",
     "feishu_doc_write",
     "mod_intent_parser",
     "doc_section_editor",
+    # ppt pipeline
+    "ppt_structure_gen",
+    "ppt_content_gen",
+    "feishu_ppt_write",
+    "ppt_slide_editor",
 ]
 
 # step_router can route to any of these destinations
@@ -49,11 +61,17 @@ _ROUTER_TARGETS: dict[str, str] = {
         "clarify_resume",
         "context_retrieval",
         "planner",
+        # doc pipeline
         "doc_structure_gen",
         "doc_content_gen",
         "feishu_doc_write",
         "mod_intent_parser",
         "doc_section_editor",
+        # ppt pipeline
+        "ppt_structure_gen",
+        "ppt_content_gen",
+        "feishu_ppt_write",
+        "ppt_slide_editor",
         "error_handler",
     ]
 }

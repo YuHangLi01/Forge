@@ -37,6 +37,11 @@ class AgentState(TypedDict, total=False):
     ppt: PPTArtifact | None
     completed_section_ids: list[str]
 
+    # PPT generation pipeline
+    ppt_brief: dict[str, Any] | None  # output of ppt_structure_gen
+    ppt_slides: list[dict[str, Any]]  # output of ppt_content_gen (per-slide content)
+    completed_slide_ids: list[int]  # for breakpoint resume in ppt_content_gen
+
     # Modification history — each edit appended; capped at 50 in doc_section_editor
     modification_history: Annotated[list[ModificationRecord], operator.add]  # reducer: append-only
 

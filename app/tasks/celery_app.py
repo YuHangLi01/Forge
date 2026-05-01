@@ -25,11 +25,23 @@ celery_app.conf.update(
         "app.tasks.demo_tasks.*": {"queue": "slow"},
         "app.tasks.card_tasks.*": {"queue": "fast"},
         "app.tasks.echo_tasks.*": {"queue": "fast"},
+        "app.tasks.cleanup_tasks.*": {"queue": "fast"},
     },
     imports=(
         "app.tasks.message_tasks",
         "app.tasks.demo_tasks",
         "app.tasks.card_tasks",
         "app.tasks.echo_tasks",
+        "app.tasks.cleanup_tasks",
     ),
+    beat_schedule={
+        "expire-clarify-actions": {
+            "task": "forge.expire_clarify_actions",
+            "schedule": 300.0,  # every 5 minutes
+        },
+        "flush-pending-progress": {
+            "task": "forge.flush_pending_progress",
+            "schedule": 0.2,  # every 200 ms
+        },
+    },
 )
