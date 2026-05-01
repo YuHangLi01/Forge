@@ -21,7 +21,9 @@ logger = structlog.get_logger(__name__)
 
 _THROTTLE_KEY = "progress_throttle:{message_id}"
 _PENDING_KEY = "progress_pending:{message_id}"
+_CARD_ID_KEY = "progress_card:{message_id}"
 _THROTTLE_TTL = 1  # seconds
+_CARD_ID_TTL = 1800  # 30 minutes — covers longest expected task
 
 
 class ProgressBroadcaster:
@@ -85,7 +87,7 @@ class ProgressBroadcaster:
     # ── internal helpers ──────────────────────────────────────────────────────
 
     def _emit(self) -> None:
-        """Throttled emit: send now if under rate limit, else queue for flush."""
+        """Throttled emit: update progress card now or queue for flush."""
         try:
             from app.config import get_settings
 
@@ -96,7 +98,7 @@ class ProgressBroadcaster:
 
             acquired = r.set(throttle_key, "1", nx=True, ex=_THROTTLE_TTL)
             if acquired:
-                self._send_now(self._current_card)
+                self._send_update(self._current_card)
             else:
                 # Park for flush task
                 r.set(pending_key, json.dumps(self._current_card), ex=10)
@@ -104,17 +106,52 @@ class ProgressBroadcaster:
             logger.exception("progress_broadcaster_emit_failed", message_id=self.message_id)
 
     def _send_now(self, card: dict[str, Any]) -> None:
+        """Reply to user's original message with a brand-new card (for emit_* calls)."""
         try:
             from app.integrations.feishu.adapter import FeishuAdapter
 
             adapter = FeishuAdapter()
             try:
                 loop = asyncio.get_running_loop()
-                # Running inside async context (graph nodes) — schedule as fire-and-forget task
-                loop.create_task(adapter.update_card(self.message_id, card))
+                loop.create_task(adapter.reply_card(self.message_id, card))
             except RuntimeError:
-                # No running loop (Celery sync task) — block until done
-                asyncio.run(adapter.update_card(self.message_id, card))
+                asyncio.run(adapter.reply_card(self.message_id, card))
+        except Exception:
+            logger.exception("progress_broadcaster_send_failed", message_id=self.message_id)
+
+    def _send_update(self, card: dict[str, Any]) -> None:
+        """Update the running progress card, creating it on first call."""
+        try:
+            from app.config import get_settings
+            from app.integrations.feishu.adapter import FeishuAdapter
+
+            settings = get_settings()
+            r = redis.from_url(settings.REDIS_URL)  # type: ignore[no-untyped-call]
+            card_key = _CARD_ID_KEY.format(message_id=self.message_id)
+            raw = r.get(card_key)
+            card_message_id: str | None = (
+                (raw.decode() if isinstance(raw, bytes) else raw) if raw else None
+            )
+            adapter = FeishuAdapter()
+            try:
+                loop = asyncio.get_running_loop()
+                if card_message_id:
+                    loop.create_task(adapter.update_card(card_message_id, card))
+                else:
+
+                    async def _reply_and_cache() -> None:
+                        new_id = await adapter.reply_card(self.message_id, card)
+                        if new_id:
+                            r.set(card_key, new_id, ex=_CARD_ID_TTL)
+
+                    loop.create_task(_reply_and_cache())
+            except RuntimeError:
+                if card_message_id:
+                    asyncio.run(adapter.update_card(card_message_id, card))
+                else:
+                    new_id = asyncio.run(adapter.reply_card(self.message_id, card))
+                    if new_id:
+                        r.set(card_key, new_id, ex=_CARD_ID_TTL)
         except Exception:
             logger.exception("progress_broadcaster_send_failed", message_id=self.message_id)
 
@@ -134,6 +171,7 @@ def flush_pending_for_message(message_id: str) -> bool:
     """Flush any parked payload for *message_id*. Returns True if something was sent."""
     try:
         from app.config import get_settings
+        from app.integrations.feishu.adapter import FeishuAdapter
 
         settings = get_settings()
         r = redis.from_url(settings.REDIS_URL)  # type: ignore[no-untyped-call]
@@ -142,10 +180,20 @@ def flush_pending_for_message(message_id: str) -> bool:
         if raw is None:
             return False
         card = json.loads(raw)
-        from app.integrations.feishu.adapter import FeishuAdapter
+
+        card_key = _CARD_ID_KEY.format(message_id=message_id)
+        card_raw = r.get(card_key)
+        card_message_id: str | None = (
+            (card_raw.decode() if isinstance(card_raw, bytes) else card_raw) if card_raw else None
+        )
 
         adapter = FeishuAdapter()
-        asyncio.run(adapter.update_card(message_id, card))
+        if card_message_id:
+            asyncio.run(adapter.update_card(card_message_id, card))
+        else:
+            new_id = asyncio.run(adapter.reply_card(message_id, card))
+            if new_id:
+                r.set(card_key, new_id, ex=_CARD_ID_TTL)
         return True
     except Exception:
         logger.exception("flush_pending_failed", message_id=message_id)
