@@ -46,6 +46,28 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     from app.schemas.agent_state import make_agent_state
     from app.schemas.enums import TaskStatus
 
+    # Message-level idempotency guard.
+    # Feishu retries failed webhook deliveries with a *new* event_id, so the
+    # webhook-layer event_id dedup does not protect against Feishu retries.
+    # We use a Redis SETNX on the message_id to ensure only one graph invocation
+    # runs per Feishu message, regardless of how many webhook deliveries arrive.
+    if msg.message_id:
+        try:
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings as _gs
+
+            _r: aioredis.Redis = aioredis.from_url(_gs().REDIS_URL)  # type: ignore[no-untyped-call]
+            async with _r:
+                already_running = not await _r.set(
+                    f"forge:msg_run:{msg.message_id}", "1", nx=True, ex=3600
+                )
+            if already_running:
+                logger.info("message_already_processing", message_id=msg.message_id)
+                return {"status": "duplicate"}
+        except Exception:
+            logger.exception("msg_dedup_check_failed", message_id=msg.message_id)
+
     initial_state = make_agent_state(
         user_id=msg.sender_user_id,
         chat_id=msg.chat_id,
