@@ -59,9 +59,9 @@ class LLMService:
 
         data = json.loads(json_str)
         if issubclass(schema, BaseModel):
-            result: T = schema.model_validate(data)  # type: ignore[assignment]
+            result: T = schema.model_validate(data)
         else:
-            result = schema(**data)  # type: ignore[assignment]
+            result = schema(**data)
 
         logger.info("llm_structured", tier=tier, schema=schema.__name__)
         return result
