@@ -1,8 +1,8 @@
-"""Embedding service wrapping bge-m3 via sentence-transformers.
+"""Embedding service wrapping bge-base-zh-v1.5 via sentence-transformers.
 
 Model is loaded once per process into a module-level singleton so that
 Linux Celery prefork workers share the same loaded weights (copy-on-write
-semantics after fork).  Cold start is 1-2 GB; subsequent calls are fast.
+semantics after fork).  Cold start ~400 MB; subsequent calls are fast.
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-_MODEL_NAME = "BAAI/bge-m3"
+_MODEL_NAME = "BAAI/bge-base-zh-v1.5"
 
 
 @lru_cache(maxsize=1)
 def _get_model() -> Any:
-    """Load bge-m3 once; cached for the lifetime of the process."""
+    """Load bge-base-zh-v1.5 once; cached for the lifetime of the process."""
     import os
 
     from sentence_transformers import SentenceTransformer
@@ -46,7 +46,7 @@ def _get_model() -> Any:
 
 
 class EmbeddingService:
-    """Thin async wrapper around bge-m3 / sentence-transformers."""
+    """Thin async wrapper around bge-base-zh-v1.5 / sentence-transformers."""
 
     async def embed(self, text: str) -> list[float]:
         """Return a float32 embedding for *text*."""
