@@ -32,6 +32,10 @@ class AgentState(TypedDict, total=False):
     completed_steps: Annotated[list[str], operator.add]  # reducer: append-only
     retrieved_context: list[dict[str, Any]]
 
+    # Document generation pipeline
+    doc_outline: dict[str, Any] | None  # produced by doc_structure_gen, consumed by doc_content_gen
+    doc_markdown: str  # produced by doc_content_gen, consumed by feishu_doc_write
+
     # Outputs
     doc: DocArtifact | None
     ppt: PPTArtifact | None
