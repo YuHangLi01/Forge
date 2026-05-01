@@ -99,7 +99,7 @@ async def _try_cancel_active_task(chat_id: str, cancel_message_id: str) -> None:
         import redis.asyncio as aioredis
 
         from app.config import get_settings
-        from app.graph import get_graph
+        from app.graph import get_or_init_graph
         from app.schemas.enums import TaskStatus
 
         settings = get_settings()
@@ -112,7 +112,7 @@ async def _try_cancel_active_task(chat_id: str, cancel_message_id: str) -> None:
         if other_thread_id == cancel_message_id:
             return  # same thread — nothing to cancel
 
-        graph = get_graph()
+        graph = await get_or_init_graph()
         other_config = {"configurable": {"thread_id": other_thread_id}}
         await graph.aupdate_state(
             other_config,

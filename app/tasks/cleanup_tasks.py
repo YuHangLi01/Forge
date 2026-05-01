@@ -92,10 +92,10 @@ async def _cancel_thread(thread_id: str) -> None:
     if not thread_id:
         return
 
-    from app.graph import get_graph
+    from app.graph import get_or_init_graph
     from app.schemas.enums import TaskStatus
 
-    graph = get_graph()
+    graph = await get_or_init_graph()
     config = {"configurable": {"thread_id": thread_id}}
     await graph.aupdate_state(
         config,

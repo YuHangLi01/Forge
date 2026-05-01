@@ -49,9 +49,9 @@ async def _handle_clarify_submit(
         logger.warning("clarify_submit_missing_ids", request_id=request_id, thread_id=thread_id)
         return {"status": "invalid"}
 
-    from app.graph import get_graph
+    from app.graph import get_or_init_graph
 
-    graph = get_graph()
+    graph = await get_or_init_graph()
     config = {"configurable": {"thread_id": thread_id}}
 
     # Stale request_id guard: check the current graph state
@@ -88,9 +88,9 @@ async def _handle_plan_confirm(value: dict[str, Any]) -> dict[str, Any]:
         logger.warning("plan_confirm_missing_thread_id")
         return {"status": "invalid"}
 
-    from app.graph import get_graph
+    from app.graph import get_or_init_graph
 
-    graph = get_graph()
+    graph = await get_or_init_graph()
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
@@ -110,10 +110,10 @@ async def _handle_plan_cancel(value: dict[str, Any]) -> dict[str, Any]:
         logger.warning("plan_cancel_missing_thread_id")
         return {"status": "invalid"}
 
-    from app.graph import get_graph
+    from app.graph import get_or_init_graph
     from app.schemas.enums import TaskStatus
 
-    graph = get_graph()
+    graph = await get_or_init_graph()
     config = {"configurable": {"thread_id": thread_id}}
 
     try:

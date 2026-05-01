@@ -41,7 +41,7 @@ async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
 async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     """Stage 2: invoke the LangGraph agent pipeline."""
     from app.db.engine import get_session
-    from app.graph import get_graph
+    from app.graph import get_or_init_graph
     from app.repositories.task_repo import create_task, update_task_status
     from app.schemas.agent_state import make_agent_state
     from app.schemas.enums import TaskStatus
@@ -89,7 +89,7 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
             logger.exception("active_task_register_failed", chat_id=msg.chat_id)
 
     try:
-        graph = get_graph()
+        graph = await get_or_init_graph()
         result = await graph.ainvoke(initial_state, config=config)
         final_status = result.get("status", TaskStatus.completed)
         logger.info("graph_completed", message_id=msg.message_id, status=final_status)
