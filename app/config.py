@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     CELERY_TASK_SOFT_TIME_LIMIT: int = Field(default=150, description="任务软超时秒数")
     CELERY_WORKER_CONCURRENCY: int = Field(default=4, description="Celery Worker 并发数")
 
+    # Feature stage
+    FORGE_STAGE: int = Field(default=2, description="当前功能阶段：2=doc only，3=doc+ppt")
+
 
 @lru_cache
 def get_settings() -> Settings:

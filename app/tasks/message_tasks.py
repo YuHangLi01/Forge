@@ -40,8 +40,11 @@ async def _handle_message_async(payload: dict[str, Any]) -> dict[str, Any]:
 
 async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     """Stage 2: invoke the LangGraph agent pipeline."""
+    from app.db.engine import get_session
     from app.graph import get_graph
+    from app.repositories.task_repo import create_task, update_task_status
     from app.schemas.agent_state import make_agent_state
+    from app.schemas.enums import TaskStatus
 
     initial_state = make_agent_state(
         user_id=msg.sender_user_id,
@@ -49,20 +52,49 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
         message_id=msg.message_id,
     )
     initial_state["raw_input"] = msg.text
+    task_id: str = initial_state["task_id"]
 
     if msg.message_type == "audio" and msg.file_key:
         initial_state["attachments"] = [
             {"type": "audio", "file_key": msg.file_key, "message_id": msg.message_id}
         ]
 
+    # D-6: create task row before graph starts
+    try:
+        async with get_session() as session:
+            await create_task(
+                session,
+                task_id=task_id,
+                user_id=msg.sender_user_id,
+                chat_id=msg.chat_id,
+            )
+    except Exception:
+        logger.exception("task_create_db_failed", task_id=task_id)
+
     config = {"configurable": {"thread_id": msg.message_id or msg.event_id}}
     try:
         graph = get_graph()
         result = await graph.ainvoke(initial_state, config=config)
-        logger.info("graph_completed", message_id=msg.message_id, status=result.get("status"))
+        final_status = result.get("status", TaskStatus.completed)
+        logger.info("graph_completed", message_id=msg.message_id, status=final_status)
+
+        # D-6: update task row after graph finishes
+        try:
+            async with get_session() as session:
+                await update_task_status(session, task_id, TaskStatus.completed)
+        except Exception:
+            logger.exception("task_update_db_failed", task_id=task_id)
+
         return {"status": "completed", "message_id": msg.message_id}
     except Exception as exc:
         logger.exception("graph_failed", message_id=msg.message_id, error=str(exc))
+
+        try:
+            async with get_session() as session:
+                await update_task_status(session, task_id, TaskStatus.failed, error=str(exc))
+        except Exception:
+            logger.exception("task_fail_update_db_failed", task_id=task_id)
+
         return {"status": "error", "error": str(exc)}
 
 

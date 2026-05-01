@@ -31,6 +31,9 @@ for attempt in 1 2 3; do
 done
 git reset --hard origin/main
 
+echo "==> [deploy] removing stale venv to avoid cross-user ownership conflicts"
+rm -rf .venv
+
 echo "==> [deploy] uv sync (skipping ml extras — sentence-transformers/torch not needed on API/worker)"
 uv sync --frozen --no-extra ml
 

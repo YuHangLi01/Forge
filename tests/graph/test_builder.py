@@ -21,8 +21,8 @@ def test_all_work_nodes_in_all_nodes_list() -> None:
 
 
 def test_all_nodes_count() -> None:
-    assert len(WORK_NODES) == 11
-    assert len(ALL_NODES) == 13  # 11 work + step_router + error_handler
+    assert len(WORK_NODES) == 15  # 11 doc-pipeline + 4 ppt-pipeline
+    assert len(ALL_NODES) == 17  # 15 work + step_router + error_handler
 
 
 def test_build_graph_returns_different_instances() -> None:
