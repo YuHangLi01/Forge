@@ -192,6 +192,7 @@ class FeishuAdapter:
         doc_token: str,
         children: list[dict[str, Any]],
         parent_block_id: str | None = None,
+        index: int = -1,
     ) -> list[str]:
         """Append a list of blocks under the given parent in a document.
 
@@ -209,10 +210,14 @@ class FeishuAdapter:
             return []
         parent = parent_block_id or doc_token
         all_block_ids: list[str] = []
+        cur_index = index
         for i in range(0, len(children), _MAX_CHILDREN_PER_CALL):
             chunk = children[i : i + _MAX_CHILDREN_PER_CALL]
-            chunk_ids = await self._create_block_children(doc_token, parent, chunk)
+            chunk_ids = await self._create_block_children(doc_token, parent, chunk, cur_index)
             all_block_ids.extend(chunk_ids)
+            # Advance the insert position for the next chunk (-1 means append, no shift needed)
+            if cur_index != -1:
+                cur_index += len(chunk)
         return all_block_ids
 
     async def _create_block_children(
@@ -220,6 +225,7 @@ class FeishuAdapter:
         doc_token: str,
         parent_block_id: str,
         children: list[dict[str, Any]],
+        index: int = -1,
     ) -> list[str]:
         """One ``create_document_block_children`` call. Logs raw payload on failure."""
         from lark_oapi.api.docx.v1 import (
@@ -227,7 +233,9 @@ class FeishuAdapter:
             CreateDocumentBlockChildrenRequestBody,
         )
 
-        body = CreateDocumentBlockChildrenRequestBody.builder().children(children).index(-1).build()
+        body = (
+            CreateDocumentBlockChildrenRequestBody.builder().children(children).index(index).build()
+        )
         req = (
             CreateDocumentBlockChildrenRequest.builder()
             .document_id(doc_token)
@@ -250,27 +258,64 @@ class FeishuAdapter:
         return [c.block_id for c in (resp.data.children or []) if c.block_id]
 
     async def delete_blocks(self, doc_token: str, block_ids: list[str]) -> None:
-        """Delete specific blocks from a document by block_id.
+        """Delete specific blocks by index-range using BatchDeleteDocumentBlockChildrenRequest.
 
-        Uses DELETE /open-apis/docx/v1/documents/{doc}/blocks/{block_id}
-        for each block.  Errors are logged but not re-raised so that a partial
-        failure doesn't abort the patch_section flow.
+        Fetches the document block list to locate the page block and the
+        positions of the target blocks within its children, then issues one
+        batch-delete call.  Errors are logged but not re-raised.
         """
-        from lark_oapi.api.docx.v1 import DeleteDocumentBlockRequest
+        if not block_ids:
+            return
 
-        for block_id in block_ids:
-            try:
-                req = (
-                    DeleteDocumentBlockRequest.builder()
-                    .document_id(doc_token)
-                    .block_id(block_id)
-                    .build()
+        from lark_oapi.api.docx.v1 import (
+            BatchDeleteDocumentBlockChildrenRequest,
+            BatchDeleteDocumentBlockChildrenRequestBody,
+        )
+
+        try:
+            all_blocks = await self.get_document_blocks(doc_token)
+            if not all_blocks:
+                return
+
+            # all_blocks[0] is the page (root) block; its children are all_blocks[1:]
+            page_block_id = all_blocks[0]["block_id"]
+            page_children = all_blocks[1:]
+
+            block_id_set = set(block_ids)
+            positions = sorted(
+                i for i, b in enumerate(page_children) if b.get("block_id") in block_id_set
+            )
+            if not positions:
+                logger.warning("delete_blocks_not_found", doc_token=doc_token)
+                return
+
+            body = (
+                BatchDeleteDocumentBlockChildrenRequestBody.builder()
+                .start_index(positions[0])
+                .end_index(positions[-1] + 1)
+                .build()
+            )
+            req = (
+                BatchDeleteDocumentBlockChildrenRequest.builder()
+                .document_id(doc_token)
+                .block_id(page_block_id)
+                .request_body(body)
+                .build()
+            )
+            resp = await asyncio.to_thread(
+                self._client.docx.v1.document_block_children.batch_delete, req
+            )
+            if resp.success():
+                logger.debug("delete_blocks_ok", doc_token=doc_token, n=len(positions))
+            else:
+                logger.warning(
+                    "delete_blocks_failed",
+                    doc_token=doc_token,
+                    code=getattr(resp, "code", 0),
+                    msg=getattr(resp, "msg", ""),
                 )
-                resp = await asyncio.to_thread(self._client.docx.v1.document_block.delete, req)
-                _check_response(resp, "delete_block")
-                logger.debug("delete_block_ok", doc_token=doc_token, block_id=block_id)
-            except Exception:
-                logger.exception("delete_block_failed", doc_token=doc_token, block_id=block_id)
+        except Exception:
+            logger.exception("delete_blocks_error", doc_token=doc_token)
 
     async def get_document_blocks(self, doc_token: str) -> list[dict[str, Any]]:
         """Read all blocks from a document."""
