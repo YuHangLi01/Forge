@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import Any
+from collections.abc import Coroutine
+from typing import Any, TypeVar
 
 import httpx
 import structlog
@@ -23,9 +24,10 @@ from app.tasks.celery_app import celery_app
 
 _loop_lock = threading.Lock()
 _worker_loop: asyncio.AbstractEventLoop | None = None
+_T = TypeVar("_T")
 
 
-def run_sync(coro: Any) -> Any:
+def run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
     """Run *coro* in the persistent worker event loop (never closes it)."""
     global _worker_loop
     with _loop_lock:
