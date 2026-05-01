@@ -52,4 +52,18 @@ async def feishu_doc_write_node(state: dict[str, Any]) -> dict[str, Any]:
     if doc.share_url:
         pb.emit_artifact(label=title, url=doc.share_url)
 
+    # Persist doc so follow-up modify requests in the same chat can access it.
+    chat_id: str = state.get("chat_id", "")
+    if chat_id:
+        try:
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings
+
+            r: aioredis.Redis = aioredis.from_url(get_settings().REDIS_URL)  # type: ignore[no-untyped-call]
+            async with r:
+                await r.set(f"active_doc:{chat_id}", doc.model_dump_json(), ex=86400)
+        except Exception:
+            logger.exception("feishu_doc_write_cache_failed", chat_id=chat_id)
+
     return {"doc": doc, "status": TaskStatus.completed, "completed_steps": ["feishu_doc_write"]}
