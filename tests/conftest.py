@@ -17,6 +17,9 @@ def mock_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "VOLC_ASR_ACCESS_TOKEN": "test_asr_token",
         "DATABASE_URL": "postgresql+psycopg://forge:forge@localhost:5432/forge",
         "DATABASE_URL_SYNC": "postgresql+psycopg://forge:forge@localhost:5432/forge",
+        # Ensure tests always use Stage 1 path regardless of server .env
+        "FORGE_USE_GRAPH": "false",
+        "FORGE_STAGE": "2",
     }
     for key, value in env.items():
         monkeypatch.setenv(key, value)
