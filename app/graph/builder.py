@@ -99,7 +99,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     for node_name in WORK_NODES:
         graph.add_node(node_name, _stub_node)  # type: ignore[type-var]
     graph.add_node("step_router", step_router_node)  # type: ignore[type-var]
-    graph.add_node("error_handler", error_handler_node)  # type: ignore[type-var]
+    graph.add_node("error_handler", error_handler_node)
 
     # Entry point
     graph.set_entry_point("preprocess")
