@@ -53,7 +53,7 @@ def test_validate_plan_missing_dep() -> None:
 def test_validate_plan_total_too_long() -> None:
     plan = PlanSchema(
         steps=[PlanStep(id="step_1", node_name="doc_structure_gen", depends_on=[])],
-        total_estimated_seconds=200,
+        total_estimated_seconds=350,  # > 300s threshold (aligned with CELERY_TASK_SOFT_TIME_LIMIT)
     )
     assert _validate_plan(plan) is False
 

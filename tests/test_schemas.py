@@ -128,7 +128,8 @@ def test_plan_schema_next_runnable_step_with_completed() -> None:
         ],
         total_estimated_seconds=60,
     )
-    step = plan.next_runnable_step(completed={"s1"})
+    # completed holds node_names (not step ids) — "parse_intent" is s1's node_name
+    step = plan.next_runnable_step(completed={"parse_intent"})
     assert step is not None
     assert step.id == "s2"
 
@@ -138,7 +139,8 @@ def test_plan_schema_next_runnable_step_all_done() -> None:
         steps=[PlanStep(id="s1", node_name="parse_intent")],
         total_estimated_seconds=30,
     )
-    step = plan.next_runnable_step(completed={"s1"})
+    # completed holds node_names
+    step = plan.next_runnable_step(completed={"parse_intent"})
     assert step is None
 
 
