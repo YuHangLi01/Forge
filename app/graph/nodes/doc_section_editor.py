@@ -7,6 +7,7 @@ from typing import Any
 import structlog
 
 from app.graph.nodes._decorator import graph_node
+from app.schemas.enums import TaskStatus
 from app.schemas.modification import ModificationRecord
 from app.services.progress_broadcaster import ProgressBroadcaster
 
@@ -29,7 +30,8 @@ async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     if mod_intent is None or doc is None:
         logger.warning("doc_section_editor_missing_mod_intent_or_doc")
-        return {}
+        pb.emit_error("未找到可修改的文档，请先生成文档再进行修改")
+        return {"status": TaskStatus.completed, "mod_intent": None}
 
     scope_identifier: str = getattr(mod_intent, "scope_identifier", "")
     instruction: str = getattr(mod_intent, "instruction", "")
@@ -50,7 +52,8 @@ async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     if target_section is None:
         logger.warning("doc_section_editor_section_not_found", scope=scope_identifier)
-        return {}
+        pb.emit_error(f"未找到章节「{scope_identifier}」，请确认章节标题后重试")
+        return {"status": TaskStatus.completed, "mod_intent": None}
 
     before_summary = target_section.content_md[:200]
 
@@ -71,7 +74,8 @@ async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         new_content = new_content.strip()
     except Exception:
         logger.exception("doc_section_editor_llm_failed")
-        return {}
+        pb.emit_error("章节内容生成失败，请重试")
+        return {"status": TaskStatus.completed, "mod_intent": None}
 
     after_summary = new_content[:200]
 
@@ -140,8 +144,6 @@ async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
     share_url: str = getattr(doc, "share_url", "") or ""
     if share_url:
         pb.emit_artifact(label=f"✅ 已修改「{scope_identifier}」", url=share_url)
-
-    from app.schemas.enums import TaskStatus
 
     return {
         "doc": updated_doc,

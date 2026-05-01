@@ -89,6 +89,23 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     initial_state["raw_input"] = msg.text
     task_id: str = initial_state["task_id"]
 
+    # Restore the most-recent DocArtifact for this chat so modify requests
+    # in a new message thread can still access the previously generated doc.
+    if msg.chat_id:
+        try:
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings as _gs2
+            from app.schemas.artifacts import DocArtifact
+
+            _r2: aioredis.Redis = aioredis.from_url(_gs2().REDIS_URL)  # type: ignore[no-untyped-call]
+            async with _r2:
+                raw_doc = await _r2.get(f"active_doc:{msg.chat_id}")
+            if raw_doc:
+                initial_state["doc"] = DocArtifact.model_validate_json(raw_doc)
+        except Exception:
+            logger.exception("active_doc_restore_failed", chat_id=msg.chat_id)
+
     if msg.message_type == "audio" and msg.file_key:
         initial_state["attachments"] = [
             {"type": "audio", "file_key": msg.file_key, "message_id": msg.message_id}
