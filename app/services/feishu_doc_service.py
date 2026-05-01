@@ -118,9 +118,15 @@ class FeishuDocService:
     ) -> None:
         """Replace a section's content blocks in-place using delete-then-insert.
 
-        Deletes the non-heading blocks from section_block_ids[1:] (keeps the
-        heading block at [0]), then appends new blocks under the heading.
-        Falls back gracefully if block operations fail.
+        All top-level blocks (headings and paragraphs) are direct children of
+        the page block — they are siblings, not nested inside each other.
+
+        Steps:
+        1. Fetch all blocks to find the page block and the heading's position.
+        2. Delete old body blocks (section_block_ids[1:]) via batch-delete on
+           the page block.
+        3. Insert new blocks as children of the page block at heading_pos + 1
+           so they appear immediately after the heading.
         """
         if not section_block_ids:
             logger.warning("patch_section_no_block_ids", section=section_title)
@@ -128,6 +134,21 @@ class FeishuDocService:
 
         heading_block_id = section_block_ids[0]
         body_block_ids = section_block_ids[1:]
+
+        # Fetch full block list once — needed for both delete positioning and
+        # finding the heading's insert offset.
+        all_blocks = await self._adapter.get_document_blocks(doc_id)
+        if not all_blocks:
+            logger.warning("patch_section_no_blocks", section=section_title)
+            return
+
+        page_block_id = all_blocks[0]["block_id"]
+        page_children = all_blocks[1:]  # direct children of the page block
+
+        heading_pos: int | None = next(
+            (i for i, b in enumerate(page_children) if b.get("block_id") == heading_block_id),
+            None,
+        )
 
         # Delete old body blocks
         if body_block_ids:
@@ -140,12 +161,15 @@ class FeishuDocService:
                 logger.exception("patch_section_delete_failed", section=section_title)
                 return
 
-        # Insert new content under the heading block
+        # Insert new paragraphs as SIBLINGS of the heading (children of page block),
+        # right after the heading.  Using heading_pos + 1 as insert index keeps
+        # them adjacent to their section title.
         new_blocks = md_to_simple_blocks(new_content_md)
         if new_blocks:
             try:
+                insert_index = (heading_pos + 1) if heading_pos is not None else -1
                 await self._adapter.batch_update_blocks(
-                    doc_id, new_blocks, parent_block_id=heading_block_id
+                    doc_id, new_blocks, parent_block_id=page_block_id, index=insert_index
                 )
                 logger.info(
                     "patch_section_inserted",
