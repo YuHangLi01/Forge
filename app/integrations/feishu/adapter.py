@@ -100,6 +100,23 @@ class FeishuAdapter:
         logger.info("reply_text_ok", original_message_id=message_id, new_message_id=new_msg_id)
         return new_msg_id
 
+    async def reply_card(self, message_id: str, card: dict[str, Any]) -> str:
+        """Reply to a message with an interactive card. Returns the new card message_id."""
+        from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody
+
+        body = (
+            ReplyMessageRequestBody.builder()
+            .content(json.dumps(card))
+            .msg_type("interactive")
+            .build()
+        )
+        req = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
+        resp = await asyncio.to_thread(self._client.im.v1.message.reply, req)
+        _check_response(resp, "reply_card")
+        new_msg_id: str = resp.data.message_id or ""
+        logger.info("reply_card_ok", original_message_id=message_id, new_message_id=new_msg_id)
+        return new_msg_id
+
     @retry(
         retry=retry_if_exception_type(FeishuRateLimitError),
         stop=stop_after_attempt(3),

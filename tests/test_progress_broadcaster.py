@@ -22,19 +22,15 @@ def _make_redis_mock(acquired_first: bool = True) -> MagicMock:
 
 
 def test_broadcaster_sends_immediately_when_lock_acquired() -> None:
-    """First begin_node call should fire update_card directly."""
+    """First begin_node call should fire _send_update directly."""
     mock_redis = _make_redis_mock(acquired_first=True)
+    mock_redis.get.return_value = None  # no cached card_message_id yet
 
-    with (
-        patch.object(pb_mod.redis, "from_url", return_value=mock_redis),
-        patch.object(pb_mod, "asyncio") as mock_asyncio,
-    ):
-        mock_asyncio.run = MagicMock()
-
+    with patch.object(pb_mod.redis, "from_url", return_value=mock_redis):
         b = pb_mod.ProgressBroadcaster(message_id="om_test", thread_id="thread_test")
-        with patch.object(b, "_send_now") as mock_send:
+        with patch.object(b, "_send_update") as mock_send:
             b.begin_node("doc_structure_gen")
-            # Lock acquired → _send_now called
+            # Lock acquired → _send_update called
             mock_send.assert_called_once()
 
     # Redis set called once (for throttle lock)
@@ -47,9 +43,9 @@ def test_broadcaster_parks_when_throttled() -> None:
 
     with patch.object(pb_mod.redis, "from_url", return_value=mock_redis):
         b = pb_mod.ProgressBroadcaster(message_id="om_throttled", thread_id="t1")
-        with patch.object(b, "_send_now") as mock_send:
+        with patch.object(b, "_send_update") as mock_send:
             b.begin_node("doc_content_gen")
-            # Lock NOT acquired → _send_now NOT called
+            # Lock NOT acquired → _send_update NOT called
             mock_send.assert_not_called()
 
     # set called twice: once for lock attempt (returns False), once to park payload
@@ -95,7 +91,7 @@ def test_broadcaster_five_calls_within_second() -> None:
             nonlocal send_count
             send_count += 1
 
-        b._send_now = counting_send  # type: ignore[method-assign]
+        b._send_update = counting_send  # type: ignore[method-assign]
 
         for i in range(5):
             b.begin_node(f"node_{i}")
