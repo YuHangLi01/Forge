@@ -116,6 +116,41 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
         return {"status": "error", "error": str(exc)}
 
 
+@forge_task(name="forge.resume_graph", queue="slow")  # type: ignore[untyped-decorator]
+def resume_graph_task(self: Any, thread_id: str, chat_id: str = "") -> dict[str, Any]:
+    """Continue a suspended LangGraph thread (after plan confirm, clarify submit, etc.)."""
+    return asyncio.run(_resume_graph_async(thread_id, chat_id))
+
+
+async def _resume_graph_async(thread_id: str, chat_id: str) -> dict[str, Any]:
+    from app.graph import get_or_init_graph
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    if chat_id and thread_id:
+        try:
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings as _gs
+
+            r: aioredis.Redis = aioredis.from_url(_gs().REDIS_URL)  # type: ignore[no-untyped-call]
+            async with r:
+                await r.setex(f"active_task:{chat_id}", 600, thread_id)
+        except Exception:
+            logger.exception("active_task_register_failed", chat_id=chat_id)
+
+    try:
+        result = await graph.ainvoke(None, config=config)
+        logger.info("graph_resumed", thread_id=thread_id, status=result.get("status"))
+        _clear_active_task(chat_id, thread_id)
+        return {"status": "completed", "thread_id": thread_id}
+    except Exception as exc:
+        logger.exception("graph_resume_failed", thread_id=thread_id, error=str(exc))
+        _clear_active_task(chat_id, thread_id)
+        return {"status": "error", "error": str(exc)}
+
+
 def _clear_active_task(chat_id: str, thread_id: str) -> None:
     """Remove active_task Redis key if it still points to this thread."""
     if not chat_id or not thread_id:

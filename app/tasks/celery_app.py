@@ -26,6 +26,8 @@ celery_app.conf.update(
         "app.tasks.card_tasks.*": {"queue": "fast"},
         "app.tasks.echo_tasks.*": {"queue": "fast"},
         "app.tasks.cleanup_tasks.*": {"queue": "fast"},
+        # Named tasks that don't match the module-path patterns above
+        "forge.resume_graph": {"queue": "slow"},
     },
     imports=(
         "app.tasks.message_tasks",
