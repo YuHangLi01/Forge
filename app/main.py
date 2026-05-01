@@ -25,6 +25,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     set_redis_client(redis_client)
 
+    from app.graph import get_or_init_graph
+
+    await get_or_init_graph()
+
     logger.info("forge_startup", env=settings.APP_ENV)
     yield
 
