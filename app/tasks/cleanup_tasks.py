@@ -159,7 +159,20 @@ async def _flush_pending_progress_async() -> dict[str, Any]:
 
                     card = json.loads(raw)
                     adapter = FeishuAdapter()
-                    await adapter.update_card(message_id, card)
+                    # Look up the actual card message_id (a reply to the user's text message).
+                    # Calling update_card(user_message_id) would fail with error 230001.
+                    card_id_raw = await r.get(f"progress_card:{message_id}")
+                    card_message_id: str | None = (
+                        (card_id_raw.decode() if isinstance(card_id_raw, bytes) else card_id_raw)
+                        if card_id_raw
+                        else None
+                    )
+                    if card_message_id:
+                        await adapter.update_card(card_message_id, card)
+                    else:
+                        new_id = await adapter.reply_card(message_id, card)
+                        if new_id:
+                            await r.set(f"progress_card:{message_id}", new_id, ex=1800)
                     flushed += 1
                 except Exception:
                     logger.exception("flush_pending_progress_send_failed", message_id=message_id)

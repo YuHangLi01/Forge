@@ -32,6 +32,8 @@ async def _handle_card_action_async(payload: dict[str, Any]) -> dict[str, Any]:
         return await _handle_plan_cancel(value)
     if action_kind == "plan_replan":
         return await _handle_plan_replan(value)
+    if action_kind == "task_continue":
+        return await _handle_task_continue(value)
 
     logger.warning("card_action_unhandled", action_kind=action_kind)
     return {"status": "unhandled"}
@@ -170,6 +172,33 @@ async def _handle_plan_replan(value: dict[str, Any]) -> dict[str, Any]:
         return {"status": "cancelled", "thread_id": thread_id}
     except Exception:
         logger.exception("plan_replan_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+
+async def _handle_task_continue(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '继续' on the timeout card — re-dispatch graph continuation."""
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        state = await graph.aget_state(config)
+        chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
+
+        await _send_progress_card(thread_id, "⏳ 继续处理中，请稍候…")
+
+        from app.tasks.message_tasks import resume_graph_task
+
+        resume_graph_task.delay(thread_id, chat_id)
+        logger.info("task_continue_dispatched", thread_id=thread_id)
+        return {"status": "dispatched", "thread_id": thread_id}
+    except Exception:
+        logger.exception("task_continue_failed", thread_id=thread_id)
         return {"status": "error"}
 
 

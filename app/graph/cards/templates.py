@@ -148,6 +148,39 @@ def doc_done_card(label: str, url: str) -> dict[str, object]:
     }
 
 
+def timeout_card(thread_id: str) -> dict[str, object]:
+    """Card shown when a Celery task times out mid-execution."""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "orange",
+            "title": {"tag": "plain_text", "content": "思考超时"},
+        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": "当前任务处理时间较长，已超过单次限制。\n是否继续尝试？",
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "继续"},
+                        "type": "primary",
+                        "behaviors": [
+                            {
+                                "type": "callback",
+                                "value": {"action": "task_continue", "thread_id": thread_id},
+                            }
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+
+
 def error_card(message: str) -> dict[str, object]:
     """Simple error notification card."""
     return {

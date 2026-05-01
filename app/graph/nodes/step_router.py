@@ -34,6 +34,10 @@ def route(state: dict[str, Any]) -> str:
     if status in (TaskStatus.cancelled, TaskStatus.failed):
         return "error_handler"
 
+    # Completed is also terminal — prevents modify-path or plan-path from looping.
+    if status == TaskStatus.completed:
+        return END
+
     # ── Priority 2: waiting for human response ───────────────────────────────
     if state.get("pending_user_action"):
         return END

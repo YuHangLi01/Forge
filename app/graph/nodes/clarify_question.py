@@ -79,12 +79,12 @@ async def clarify_question_node(state: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         logger.warning("clarify_redis_store_failed", request_id=request_id)
 
-    # Send the card — update the original bot message if we have it,
-    # otherwise send as a new message
+    # Reply to the original user message with an interactive clarify card.
+    # update_card would fail (error 230001) because the original message is plain text.
     try:
         feishu = FeishuAdapter()
         if message_id:
-            await feishu.update_card(message_id, card)
+            await feishu.reply_card(message_id, card)
         else:
             await feishu.send_text(chat_id, json.dumps(card))
         logger.info(

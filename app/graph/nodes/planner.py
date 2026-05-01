@@ -75,8 +75,8 @@ def _validate_plan(plan: PlanSchema) -> bool:
         logger.warning("plan_cycle_detected")
         return False
 
-    # Total time constraint
-    if plan.total_estimated_seconds > 150:
+    # Total time constraint (aligned with CELERY_TASK_SOFT_TIME_LIMIT = 300s)
+    if plan.total_estimated_seconds > 300:
         logger.warning("plan_too_long", total_seconds=plan.total_estimated_seconds)
         return False
 
