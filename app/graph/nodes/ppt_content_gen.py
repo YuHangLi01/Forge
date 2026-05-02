@@ -77,7 +77,7 @@ async def _gen_slide_content(
 async def ppt_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     from app.services.llm_service import LLMService
 
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(2)
 
     raw_brief: dict[str, Any] = state.get("ppt_brief") or {}
     ppt_title: str = raw_brief.get("title", "演示文稿")
