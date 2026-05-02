@@ -55,7 +55,7 @@ async def clarify_question_node(state: dict[str, Any]) -> dict[str, Any]:
     thread_id = message_id
 
     request_id = str(uuid4())
-    card = clarify_card(questions, request_id=request_id, thread_id=thread_id)
+    card = clarify_card(questions)
 
     # Store pending clarify metadata in Redis (for TTL cleanup)
     try:
@@ -76,6 +76,9 @@ async def clarify_question_node(state: dict[str, Any]) -> dict[str, Any]:
         )
         async with r:
             await r.setex(f"clarify:{request_id}", 7200, payload)  # 2h TTL as safety net
+            # Also index by chat_id so message_tasks can find the thread to resume.
+            if chat_id:
+                await r.setex(f"pending_clarify:{chat_id}", 7200, thread_id)
     except Exception:
         logger.warning("clarify_redis_store_failed", request_id=request_id)
 
