@@ -10,7 +10,7 @@ from app.schemas.modification import ModificationRecord
 from app.schemas.plan import PlanSchema
 
 
-def _capped_mod_history(a: list, b: list) -> list:
+def _capped_mod_history(a: list[Any], b: list[Any]) -> list[Any]:
     """Append-only reducer capped at 50 entries."""
     return (a + b)[-50:]
 
