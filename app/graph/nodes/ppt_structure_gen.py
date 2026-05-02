@@ -70,4 +70,4 @@ async def ppt_structure_gen_node(state: dict[str, Any]) -> dict[str, Any]:
         n_slides=brief.slide_count,
         design_token=brief.design_token_name,
     )
-    return {"ppt_brief": brief.model_dump()}
+    return {"ppt_brief": brief.model_dump(), "completed_steps": ["ppt_structure_gen"]}

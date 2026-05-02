@@ -374,10 +374,9 @@ async def _handle_control_intent(msg: Any, control: str, graph: Any) -> dict[str
     if control == "resume":
         try:
             await graph.aupdate_state(config, {"pending_user_action": None}, as_node="step_router")
-            result = await graph.ainvoke(None, config)
-            logger.info(
-                "graph_resumed_from_pause", thread_id=thread_id, status=result.get("status")
-            )
+            # Dispatch to slow queue — graph execution is long-running
+            resume_graph_task.delay(thread_id, msg.chat_id or "")
+            logger.info("resume_dispatched", thread_id=thread_id)
         except Exception:
             logger.exception("resume_failed", thread_id=thread_id)
         return {"status": "resumed", "thread_id": thread_id}
@@ -391,8 +390,9 @@ async def _handle_control_intent(msg: Any, control: str, graph: Any) -> dict[str
                 {"status": TaskStatus.cancelled, "pending_user_action": None},
                 as_node="step_router",
             )
-            result = await graph.ainvoke(None, config)
-            logger.info("graph_cancelled", thread_id=thread_id, status=result.get("status"))
+            # Dispatch cancel through slow queue so error_handler can clean up
+            resume_graph_task.delay(thread_id, msg.chat_id or "")
+            logger.info("cancel_dispatched", thread_id=thread_id)
         except Exception:
             logger.exception("cancel_failed", thread_id=thread_id)
         return {"status": "cancelled", "thread_id": thread_id}

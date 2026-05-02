@@ -106,4 +106,4 @@ async def ppt_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     slide_list = sorted(results, key=lambda s: s.get("slide_index", 0))
 
     logger.info("ppt_content_gen_done", n_slides=len(slide_list))
-    return {"ppt_slides": slide_list}
+    return {"ppt_slides": slide_list, "completed_steps": ["ppt_content_gen"]}

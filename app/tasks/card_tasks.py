@@ -50,7 +50,11 @@ async def _handle_clarify_submit(
 ) -> dict[str, Any]:
     request_id: str = value.get("request_id", "")
     thread_id: str = value.get("thread_id", "")
-    clarify_answer: str = form_value.get("clarify_answer", "").strip()
+    # form_value is only populated for Feishu form-input elements; button clicks
+    # carry their payload flat inside value — check both to support both card types.
+    clarify_answer: str = (
+        form_value.get("clarify_answer") or value.get("clarify_answer", "")
+    ).strip()
 
     if not request_id or not thread_id:
         logger.warning("clarify_submit_missing_ids", request_id=request_id, thread_id=thread_id)

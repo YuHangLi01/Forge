@@ -233,7 +233,7 @@ def calendar_clarify_card(
                     "action": "clarify_submit",
                     "thread_id": thread_id,
                     "request_id": thread_id,
-                    "form_value": {"clarify_answer": summary},
+                    "clarify_answer": summary,
                 },
             }
         )
@@ -246,7 +246,7 @@ def calendar_clarify_card(
                 "action": "clarify_submit",
                 "thread_id": thread_id,
                 "request_id": thread_id,
-                "form_value": {"clarify_answer": "其他"},
+                "clarify_answer": "其他",
             },
         }
     )
