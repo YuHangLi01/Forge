@@ -25,6 +25,9 @@ WORK_NODES: list[str] = [
     "ppt_content_gen",
     "feishu_ppt_write",
     "ppt_slide_editor",
+    # lego multi-scenario orchestration (Stage 3)
+    "scenario_composer",
+    "lego_orchestrator",
 ]
 
 # Routing/terminal nodes
@@ -50,6 +53,9 @@ _ROUTED_WORK_NODES: list[str] = [
     "ppt_content_gen",
     "feishu_ppt_write",
     "ppt_slide_editor",
+    # lego orchestration
+    "scenario_composer",
+    "lego_orchestrator",
 ]
 
 # step_router can route to any of these destinations
@@ -72,6 +78,9 @@ _ROUTER_TARGETS: dict[str, str] = {
         "ppt_content_gen",
         "feishu_ppt_write",
         "ppt_slide_editor",
+        # lego orchestration
+        "scenario_composer",
+        "lego_orchestrator",
         "error_handler",
     ]
 }
@@ -95,12 +104,14 @@ def build_graph(checkpointer: Any = None) -> Any:
     from app.graph.nodes.feishu_doc_write import feishu_doc_write_node
     from app.graph.nodes.feishu_ppt_write import feishu_ppt_write_node
     from app.graph.nodes.intent_parser import intent_parser_node
+    from app.graph.nodes.lego_orchestrator import lego_orchestrator_node
     from app.graph.nodes.mod_intent_parser import mod_intent_parser_node
     from app.graph.nodes.planner import planner_node
     from app.graph.nodes.ppt_content_gen import ppt_content_gen_node
     from app.graph.nodes.ppt_slide_editor import ppt_slide_editor_node
     from app.graph.nodes.ppt_structure_gen import ppt_structure_gen_node
     from app.graph.nodes.preprocess import preprocess_node
+    from app.graph.nodes.scenario_composer import scenario_composer_node
     from app.graph.nodes.step_router import route, step_router_node
 
     work_node_impls: dict[str, Any] = {
@@ -119,6 +130,8 @@ def build_graph(checkpointer: Any = None) -> Any:
         "ppt_content_gen": ppt_content_gen_node,
         "feishu_ppt_write": feishu_ppt_write_node,
         "ppt_slide_editor": ppt_slide_editor_node,
+        "scenario_composer": scenario_composer_node,
+        "lego_orchestrator": lego_orchestrator_node,
     }
 
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)

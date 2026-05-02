@@ -59,6 +59,12 @@ class AgentState(TypedDict, total=False):
     clarify_answer: str | None  # injected by card_tasks when user submits the clarify card
     clarify_count: int  # how many clarify rounds have fired; guards against infinite loops
 
+    # Lego multi-scenario orchestration
+    _lego_scenarios: list[str] | None  # e.g. ["C", "D"]; set by scenario_composer
+
+    # Checkpoint / pause-resume (S3-T07)
+    _pause_reason: str | None  # "plan_confirm" | "user_paused"
+
     # Lifecycle
     status: TaskStatus
     error: str | None

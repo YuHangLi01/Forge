@@ -71,6 +71,14 @@ def route(state: dict[str, Any]) -> str:
     # ── Priority 4d: plan not built yet ─────────────────────────────────────
     plan = state.get("plan")
     if plan is None:
+        # Multi-format requests (doc + ppt) are handled by the lego path.
+        output_formats = list(getattr(intent, "output_formats", []))
+        has_doc = any(str(f) == "document" for f in output_formats)
+        has_ppt = any(str(f) == "presentation" for f in output_formats)
+        if has_doc and has_ppt:
+            if not state.get("_lego_scenarios"):
+                return "scenario_composer"
+            return "lego_orchestrator"
         return "planner"
 
     # ── Priority 4e/f: follow the plan ──────────────────────────────────────

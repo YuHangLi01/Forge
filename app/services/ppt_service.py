@@ -82,12 +82,15 @@ class PPTService:
         )
 
     async def _upload_to_drive(self, title: str, pptx_bytes: bytes) -> tuple[str, str]:
-        """Hand the bytes to Feishu Drive via the adapter.
+        """Upload .pptx bytes to Feishu Drive; return (file_token, share_url)."""
+        from typing import Any
 
-        Stage 1 leaves this as a placeholder hook; the FeishuAdapter doesn't
-        yet expose `upload_drive_file`. When that method lands, this becomes
-        a one-liner. For now we log and return empty strings so the artifact
-        is still well-formed.
-        """
-        logger.info("pptx_upload_skipped", reason="adapter_upload_not_implemented")
-        return "", ""
+        adapter: Any = self._adapter
+        file_token: str = await adapter.upload_drive_file(f"{title}.pptx", pptx_bytes)
+        if not file_token:
+            logger.error("pptx_upload_empty_token", title=title)
+            return "", ""
+        share_url: str = await adapter.get_share_url(file_token, type_="file")
+        await adapter.set_permission_public(file_token, type_="file")
+        logger.info("pptx_uploaded", file_token=file_token, share_url=share_url)
+        return file_token, share_url
