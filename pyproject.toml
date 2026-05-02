@@ -74,6 +74,7 @@ testpaths = ["tests"]
 markers = [
     "integration: live-network tests; require FORGE_RUN_INTEGRATION=1 and real .env",
     "golden: golden-set regression tests for LLM prompt outputs",
+    "demo_critical: Stage 3 demo rehearsal tests; run with pytest -m demo_critical --no-cov -v",
 ]
 
 [tool.coverage.run]
