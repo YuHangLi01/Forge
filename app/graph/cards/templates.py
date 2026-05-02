@@ -140,6 +140,63 @@ def timeout_card(thread_id: str) -> dict[str, object]:
     }
 
 
+def mod_target_clarify_card(
+    scope_identifier: str,
+    thread_id: str,
+) -> dict[str, object]:
+    """Card asking user to confirm which artifact to modify (doc, ppt, or both)."""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "orange",
+            "title": {"tag": "plain_text", "content": "请确认修改目标"},
+        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": (
+                    f"我看到你的指令可能针对文档或 PPT。" f"请确认「{scope_identifier}」是指哪个？"
+                ),
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": f"📄 文档{scope_identifier}"},
+                        "type": "primary",
+                        "value": {
+                            "action": "mod_target",
+                            "target": "document",
+                            "thread_id": thread_id,
+                        },
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": f"📊 PPT{scope_identifier}"},
+                        "type": "default",
+                        "value": {
+                            "action": "mod_target",
+                            "target": "presentation",
+                            "thread_id": thread_id,
+                        },
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📄+📊 都改"},
+                        "type": "default",
+                        "value": {
+                            "action": "mod_target",
+                            "target": "both",
+                            "thread_id": thread_id,
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+
 def error_card(message: str) -> dict[str, object]:
     """Simple error notification card."""
     return {
