@@ -39,7 +39,7 @@ _LAYOUT_INDEX_BY_KIND: dict[SlideLayout, int] = {
 
 def _hex_to_rgb(hex_color: str) -> RGBColor:
     h = hex_color.lstrip("#")
-    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))  # type: ignore[no-untyped-call]
 
 
 class PptxBuilder:

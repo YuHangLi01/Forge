@@ -323,7 +323,7 @@ async def _handle_mod_target(value: dict[str, Any]) -> dict[str, Any]:
         pending: dict[str, Any] = vals.get("pending_user_action") or {}
 
         mod_intent = ModificationIntent(
-            target=target,  # type: ignore[arg-type]
+            target=target,
             scope_type=pending.get("scope_type", "full"),
             scope_identifier=pending.get("scope_identifier", "全部"),
             modification_type=pending.get("modification_type", "rewrite"),
