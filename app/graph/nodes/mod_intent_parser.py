@@ -22,7 +22,6 @@ _FALLBACK = ModificationIntent(
 
 _DOC_KEYWORDS_RE = re.compile(r"文档|节|章节|正文")
 _PPT_KEYWORDS_RE = re.compile(r"PPT|ppt|幻灯片|页|slide|演示文稿")
-_AMBIGUOUS_RE = re.compile(r"第\d+个|那个|刚才的|那个")
 
 
 def _keyword_disambiguate(text: str) -> str | None:

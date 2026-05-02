@@ -35,16 +35,54 @@ async def ppt_structure_gen_node(state: dict[str, Any]) -> dict[str, Any]:
 
     intent = state.get("intent")
     context: list[dict[str, Any]] = state.get("retrieved_context") or []
+    doc = state.get("doc")
 
     primary_goal = getattr(intent, "primary_goal", "生成 PPT") if intent else "生成 PPT"
     target_audience = getattr(intent, "target_audience", None) if intent else None
-    context_summary = "\n".join(c.get("text", "")[:200] for c in context[:3]) or "（无背景资料）"
+
+    # In Lego flows (C→D), try to read the current Feishu doc content so PPT
+    # reflects any edits the user may have made during a pause.
+    fresh_doc_text = ""
+    if doc and getattr(doc, "doc_id", None):
+        try:
+            from app.integrations.feishu.adapter import FeishuAdapter
+
+            fresh_doc_text = await FeishuAdapter().get_doc_text(doc.doc_id)
+            if fresh_doc_text:
+                logger.info(
+                    "ppt_structure_gen_fresh_doc",
+                    doc_id=doc.doc_id,
+                    chars=len(fresh_doc_text),
+                )
+        except Exception:
+            logger.warning("ppt_structure_gen_doc_read_failed", doc_id=doc.doc_id)
+
+    if fresh_doc_text:
+        context_summary = fresh_doc_text[:2000]
+    else:
+        fallback = state.get("doc_markdown", "") or ""
+        context_summary = (
+            "\n".join(c.get("text", "")[:200] for c in context[:3])
+            or fallback[:2000]
+            or "（无背景资料）"
+        )
+
+    # Derive a reasonable slide count from content length instead of hardcoding 0.
+    total_chars = sum(len(c.get("text", "")) for c in context[:3]) + len(
+        fresh_doc_text or state.get("doc_markdown", "") or ""
+    )
+    if total_chars > 3000 or len(context) > 5:
+        expected_slides = 10
+    elif total_chars > 800:
+        expected_slides = 7
+    else:
+        expected_slides = 5
 
     prompt_version = get_prompt("ppt_structure_gen")
     filled = prompt_version.text.format(
         primary_goal=primary_goal,
         target_audience=target_audience or "通用听众",
-        expected_slides=0,
+        expected_slides=expected_slides,
         context_summary=context_summary,
     )
 

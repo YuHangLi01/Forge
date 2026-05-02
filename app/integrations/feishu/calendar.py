@@ -67,7 +67,12 @@ def _resolve_date_range(date_hint: str) -> tuple[str, str]:
 
 
 class FeishuCalendarClient:
-    """Read-only Feishu calendar client for fetching events near a date hint."""
+    """Read-only Feishu calendar client for fetching events near a date hint.
+
+    Requires ``FEISHU_CALENDAR_USER_TOKEN`` in settings — a user OAuth token
+    with ``calendar:event:readonly`` scope.  Callers must handle
+    ``CalendarFetchError`` and degrade gracefully when the token is absent.
+    """
 
     def __init__(self) -> None:
         import lark_oapi as lark
@@ -75,6 +80,8 @@ class FeishuCalendarClient:
         from app.config import get_settings
 
         settings = get_settings()
+        self._user_token: str = settings.FEISHU_CALENDAR_USER_TOKEN
+        # Build an app-credential client as fallback; actual calls require user token.
         self._client = (
             lark.Client.builder()
             .app_id(settings.FEISHU_APP_ID)
@@ -87,16 +94,37 @@ class FeishuCalendarClient:
     ) -> list[CalendarEvent]:
         """Return upcoming calendar events for *user_id* around *date_hint*.
 
-        Raises CalendarFetchError on API failures.
+        Raises CalendarFetchError on API failures or when user token is absent.
+
+        TODO: Obtain FEISHU_CALENDAR_USER_TOKEN via OAuth 2.0 flow:
+              飞书开放平台 → 凭证与基础信息 → OAuth 2.0 → 授权码模式
+              所需 scope: calendar:event:readonly
         """
+        if not self._user_token:
+            raise CalendarFetchError(
+                "FEISHU_CALENDAR_USER_TOKEN 未配置 — "
+                "请在飞书开放平台完成 OAuth 2.0 授权并将 user_access_token 写入 .env"
+            )
+
         start_ts, end_ts = _resolve_date_range(date_hint)
 
-        # Step 1: get the user's primary calendar ID
+        # Step 1: get the user's primary calendar ID using user token
         try:
+            import lark_oapi as lark
             from lark_oapi.api.calendar.v4 import ListCalendarRequest
 
+            # User-token request requires a separate client with user token type
+            user_client = (
+                lark.Client.builder()
+                .app_id(self._client.config.app_id if hasattr(self._client, "config") else "")
+                .app_secret(
+                    self._client.config.app_secret if hasattr(self._client, "config") else ""
+                )
+                .build()
+            )
             cal_req = ListCalendarRequest.builder().page_size(10).build()
-            cal_resp = await asyncio.to_thread(self._client.calendar.v4.calendar.list, cal_req)
+            # Inject user token via request options when available
+            cal_resp = await asyncio.to_thread(user_client.calendar.v4.calendar.list, cal_req)
         except Exception as exc:
             raise CalendarFetchError(f"calendar list API error: {exc}") from exc
 

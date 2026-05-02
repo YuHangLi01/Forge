@@ -71,6 +71,7 @@ async def feishu_ppt_write_node(state: dict[str, Any]) -> dict[str, Any]:
     raw_slides: list[dict[str, Any]] = state.get("ppt_slides") or []
     raw_brief: dict[str, Any] = state.get("ppt_brief") or {}
     title: str = raw_brief.get("title", "演示文稿")
+    token_name: str = raw_brief.get("design_token_name", "minimal")
 
     if not raw_slides:
         logger.error("feishu_ppt_write_no_slides", message_id=message_id)
@@ -80,7 +81,7 @@ async def feishu_ppt_write_node(state: dict[str, Any]) -> dict[str, Any]:
 
     adapter = FeishuAdapter()
     svc = PPTService(adapter=adapter)
-    ppt_artifact = await svc.create_from_outline(title, slides)
+    ppt_artifact = await svc.create_from_outline(title, slides, token_name=token_name)
 
     pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
     if ppt_artifact.share_url:

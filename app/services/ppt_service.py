@@ -40,9 +40,12 @@ class PPTService:
         title: str,
         slides: list[SlideSchema],
         subtitle: str = "",
+        token_name: str = "minimal",
     ) -> PPTArtifact:
         """Render the outline into a .pptx and (optionally) upload to Drive."""
-        pptx_bytes = await asyncio.to_thread(self._builder.build, title, slides, subtitle)
+        pptx_bytes = await asyncio.to_thread(
+            self._builder.build, title, slides, subtitle, token_name
+        )
         logger.info(
             "pptx_built",
             title=title,
@@ -66,9 +69,10 @@ class PPTService:
         title: str,
         slides: list[SlideSchema],
         subtitle: str = "",
+        token_name: str = "minimal",
     ) -> bytes:
         """Pure render path: returns deck bytes without any side effect."""
-        return await asyncio.to_thread(self._builder.build, title, slides, subtitle)
+        return await asyncio.to_thread(self._builder.build, title, slides, subtitle, token_name)
 
     async def patch_slide(self, ppt_id: str, page_index: int, slide: SlideSchema) -> None:
         """Per-slide patching is not supported in the python-pptx path.
