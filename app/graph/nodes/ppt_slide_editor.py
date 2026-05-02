@@ -9,8 +9,35 @@ from typing import Any
 import structlog
 
 from app.graph.nodes._decorator import graph_node
-from app.schemas.artifacts import SlideSchema
+from app.schemas.artifacts import ChartSchema, ChartSeries, SlideSchema
 from app.schemas.enums import TaskStatus
+
+_CHART_TRIGGER_RE = re.compile(
+    r"图表|柱状图|折线图|饼图|bar\s*chart|line\s*chart|pie\s*chart|chart",
+    re.IGNORECASE,
+)
+
+_CHART_EXTRACT_PROMPT = """\
+请从以下修改指令中提取图表数据，输出 JSON。
+
+修改指令：{instruction}
+
+输出格式（严格 JSON，不加 markdown 代码块）：
+{{
+  "chart_type": "bar|line|pie",
+  "title": "图表标题",
+  "categories": ["类目1", "类目2"],
+  "series": [
+    {{"name": "系列名", "values": [数值1, 数值2]}}
+  ]
+}}
+
+规则：
+- chart_type 只能是 bar / line / pie
+- categories 和 values 长度必须相同
+- 如果指令中没有明确数据，编造合理的示例数据
+- 只输出 JSON，不加任何解释
+"""
 
 logger = structlog.get_logger(__name__)
 
@@ -113,12 +140,35 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         logger.exception("ppt_slide_editor_llm_failed", slide_index=target_idx)
         return {"error": "幻灯片内容生成失败，请重试", "status": TaskStatus.failed}
 
+    chart_schema: ChartSchema | None = None
+    if _CHART_TRIGGER_RE.search(instruction):
+        try:
+            chart_prompt = _CHART_EXTRACT_PROMPT.format(instruction=instruction)
+            chart_raw: str = await llm.invoke(chart_prompt, tier="lite")
+            stripped_chart = chart_raw.strip()
+            if stripped_chart.startswith("```"):
+                lines = stripped_chart.split("\n")
+                stripped_chart = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+            chart_dict: dict[str, Any] = json.loads(stripped_chart)
+            chart_schema = ChartSchema(
+                chart_type=chart_dict.get("chart_type", "bar"),
+                title=chart_dict.get("title", ""),
+                categories=chart_dict.get("categories", []),
+                series=[
+                    ChartSeries(name=s["name"], values=s["values"])
+                    for s in chart_dict.get("series", [])
+                ],
+            )
+        except Exception:
+            logger.exception("ppt_slide_editor_chart_extract_failed", slide_index=target_idx)
+
     new_slide = SlideSchema(
         page_index=target_slide.page_index,
         layout=target_slide.layout,
         title=updated.get("heading", target_slide.title),
         bullets=updated.get("bullets") or [],
         speaker_notes=updated.get("speaker_notes", ""),
+        chart=chart_schema,
     )
     slides[target_idx] = new_slide
 

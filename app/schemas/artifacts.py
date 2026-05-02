@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.enums import SlideLayout
+from app.schemas.enums import ChartType, SlideLayout
 
 
 class DocSection(BaseModel):
@@ -21,6 +21,22 @@ class DocArtifact(BaseModel):
     share_url: str = ""
 
 
+class ChartSeries(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    values: list[float]
+
+
+class ChartSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chart_type: ChartType = ChartType.bar
+    title: str = ""
+    categories: list[str] = Field(default_factory=list)
+    series: list[ChartSeries] = Field(default_factory=list)
+
+
 class SlideSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -33,6 +49,7 @@ class SlideSchema(BaseModel):
     element_ids: dict[str, str] = Field(
         default_factory=dict, description="逻辑名 → 飞书 element_id"
     )
+    chart: ChartSchema | None = None
 
 
 class PPTArtifact(BaseModel):

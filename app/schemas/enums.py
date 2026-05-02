@@ -42,3 +42,9 @@ class SlideLayout(StrEnum):
     two_column = "two_column"
     blank = "blank"
     section_header = "section_header"
+
+
+class ChartType(StrEnum):
+    bar = "bar"
+    line = "line"
+    pie = "pie"

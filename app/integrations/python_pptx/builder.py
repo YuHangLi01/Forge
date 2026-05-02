@@ -13,7 +13,9 @@ import io
 from typing import Any
 
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches, Pt
 
 from app.schemas.artifacts import SlideSchema
@@ -28,6 +30,12 @@ _SUBTITLE_FONT_PT = 22
 #   1 = Title and Content
 #   5 = Title Only
 #   6 = Blank
+_CHART_TYPE_MAP: dict[str, Any] = {
+    "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,
+    "line": XL_CHART_TYPE.LINE,
+    "pie": XL_CHART_TYPE.PIE,
+}
+
 _LAYOUT_INDEX_BY_KIND: dict[SlideLayout, int] = {
     SlideLayout.cover: 0,
     SlideLayout.title_content: 1,
@@ -127,6 +135,29 @@ class PptxBuilder:
 
         if schema.speaker_notes:
             slide.notes_slide.notes_text_frame.text = schema.speaker_notes
+
+        if schema.chart is not None:
+            self._add_chart_to_slide(slide, schema.chart)
+
+    def _add_chart_to_slide(self, slide: Any, chart_schema: Any) -> None:
+        chart_data = CategoryChartData()  # type: ignore[no-untyped-call]
+        chart_data.categories = chart_schema.categories or ["A", "B", "C"]
+        for s in chart_schema.series:
+            chart_data.add_series(s.name, tuple(s.values))  # type: ignore[no-untyped-call]
+
+        xl_type = _CHART_TYPE_MAP.get(str(chart_schema.chart_type), XL_CHART_TYPE.COLUMN_CLUSTERED)
+        graphic_frame = slide.shapes.add_chart(
+            xl_type,
+            Inches(0.5),
+            Inches(3.0),
+            Inches(9.0),
+            Inches(4.5),
+            chart_data,
+        )
+        if chart_schema.title:
+            chart_obj = graphic_frame.chart
+            chart_obj.has_title = True
+            chart_obj.chart_title.text_frame.text = chart_schema.title
 
     def _style_shape(self, shape: Any, size_pt: int) -> None:
         """Apply token text colour and the given font size to all runs in a shape."""
