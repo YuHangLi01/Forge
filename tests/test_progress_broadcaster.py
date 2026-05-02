@@ -11,7 +11,8 @@ use AsyncMock to patch the aioredis connection.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -89,27 +90,30 @@ def test_react_filter_sanitize_integration() -> None:
         mock_emit.assert_called_once()
 
 
-def test_broadcaster_emit_dispatches_task_with_running_loop() -> None:
-    """_emit should call loop.create_task when an event loop is running."""
-    b = pb_mod.ProgressBroadcaster(message_id="om_task", thread_id="t_task")
+def test_broadcaster_emit_spawns_daemon_thread() -> None:
+    """_emit should always spawn a daemon thread running asyncio.run(_emit_async).
+
+    This avoids 'Task was destroyed but it is pending!' in Celery workers where
+    the event loop is short-lived and create_task tasks are never executed.
+    """
+    from unittest.mock import MagicMock
+
+    b = pb_mod.ProgressBroadcaster(message_id="om_thread", thread_id="t_thread")
     b._current_card = {"some": "card"}
 
-    mock_loop = MagicMock()
-    with patch("asyncio.get_running_loop", return_value=mock_loop):
+    mock_thread_instance = MagicMock()
+    mock_thread_cls = MagicMock(return_value=mock_thread_instance)
+
+    with patch("app.services.progress_broadcaster.threading.Thread", mock_thread_cls):
         b._emit()
 
-    mock_loop.create_task.assert_called_once()
+    mock_thread_cls.assert_called_once()
+    _, kwargs = mock_thread_cls.call_args
+    assert kwargs.get("daemon") is True
+    assert kwargs.get("target") is asyncio.run
+    mock_thread_instance.start.assert_called_once()
 
-
-def test_broadcaster_emit_uses_asyncio_run_without_loop() -> None:
-    """_emit should fall back to asyncio.run when no event loop is running."""
-    b = pb_mod.ProgressBroadcaster(message_id="om_run", thread_id="t_run")
-    b._current_card = {"some": "card"}
-
-    with (
-        patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")),
-        patch("asyncio.run") as mock_run,
-    ):
-        b._emit()
-
-    mock_run.assert_called_once()
+    # Close the unawaited coroutine that was passed as args to the mock thread
+    # to prevent RuntimeWarning from the GC ("coroutine never awaited").
+    coro = kwargs["args"][0]
+    coro.close()
