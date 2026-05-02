@@ -121,7 +121,7 @@ async def mod_intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
     # Override target when pre-disambiguation is conclusive
     if force_target is not None:
         mod_intent = ModificationIntent(
-            target=force_target,  # type: ignore[arg-type]
+            target=force_target,
             scope_type=mod_intent.scope_type,
             scope_identifier=mod_intent.scope_identifier,
             modification_type=mod_intent.modification_type,
