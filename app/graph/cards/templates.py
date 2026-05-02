@@ -10,48 +10,53 @@ from __future__ import annotations
 def clarify_card(questions: list[str], request_id: str, thread_id: str) -> dict[str, object]:
     """Card that asks the user ≤2 clarifying questions with a free-text input.
 
-    The submit button value encodes request_id + thread_id so card_tasks can
-    resume the correct graph thread.  The form element named "clarify_answer"
-    carries whatever the user typed.
+    Uses Feishu card schema 2.0 so that the `input` element and `form_submit`
+    behavior are supported.  The form field "clarify_answer" is delivered in
+    event.action.form_value when the user clicks 提交回答.
     """
     questions_md = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions[:2]))
     return {
+        "schema": "2.0",
         "config": {"wide_screen_mode": True},
         "header": {
             "template": "blue",
             "title": {"tag": "plain_text", "content": "需要补充一些信息"},
         },
-        "elements": [
-            {
-                "tag": "markdown",
-                "content": f"为了更好地完成任务，请回答以下问题：\n\n{questions_md}",
-            },
-            {
-                "tag": "input",
-                "placeholder": {"tag": "plain_text", "content": "请输入您的回答…"},
-                "name": "clarify_answer",
-            },
-            {
-                "tag": "action",
-                "actions": [
-                    {
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "提交回答"},
-                        "type": "primary",
-                        "behaviors": [
-                            {
-                                "type": "callback",
-                                "value": {
-                                    "action": "clarify_submit",
-                                    "request_id": request_id,
-                                    "thread_id": thread_id,
-                                },
-                            }
-                        ],
-                    }
-                ],
-            },
-        ],
+        "body": {
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": f"为了更好地完成任务，请回答以下问题：\n\n{questions_md}",
+                },
+                {
+                    "tag": "form",
+                    "name": "clarify_form",
+                    "elements": [
+                        {
+                            "tag": "input",
+                            "name": "clarify_answer",
+                            "placeholder": {"tag": "plain_text", "content": "请输入您的回答…"},
+                        },
+                        {
+                            "tag": "button",
+                            "text": {"tag": "plain_text", "content": "提交回答"},
+                            "type": "primary",
+                            "behaviors": [
+                                {
+                                    "type": "form_submit",
+                                    "name": "clarify_form",
+                                    "value": {
+                                        "action": "clarify_submit",
+                                        "request_id": request_id,
+                                        "thread_id": thread_id,
+                                    },
+                                }
+                            ],
+                        },
+                    ],
+                },
+            ]
+        },
     }
 
 
@@ -87,43 +92,28 @@ def plan_preview_card(
                         "tag": "button",
                         "text": {"tag": "plain_text", "content": "确认执行"},
                         "type": "primary",
-                        "behaviors": [
-                            {
-                                "type": "callback",
-                                "value": {
-                                    "action": "plan_confirm",
-                                    "thread_id": thread_id,
-                                },
-                            }
-                        ],
+                        "value": {
+                            "action": "plan_confirm",
+                            "thread_id": thread_id,
+                        },
                     },
                     {
                         "tag": "button",
                         "text": {"tag": "plain_text", "content": "重新规划"},
                         "type": "default",
-                        "behaviors": [
-                            {
-                                "type": "callback",
-                                "value": {
-                                    "action": "plan_replan",
-                                    "thread_id": thread_id,
-                                },
-                            }
-                        ],
+                        "value": {
+                            "action": "plan_replan",
+                            "thread_id": thread_id,
+                        },
                     },
                     {
                         "tag": "button",
                         "text": {"tag": "plain_text", "content": "取消"},
                         "type": "danger",
-                        "behaviors": [
-                            {
-                                "type": "callback",
-                                "value": {
-                                    "action": "plan_cancel",
-                                    "thread_id": thread_id,
-                                },
-                            }
-                        ],
+                        "value": {
+                            "action": "plan_cancel",
+                            "thread_id": thread_id,
+                        },
                     },
                 ],
             },
@@ -168,12 +158,7 @@ def timeout_card(thread_id: str) -> dict[str, object]:
                         "tag": "button",
                         "text": {"tag": "plain_text", "content": "继续"},
                         "type": "primary",
-                        "behaviors": [
-                            {
-                                "type": "callback",
-                                "value": {"action": "task_continue", "thread_id": thread_id},
-                            }
-                        ],
+                        "value": {"action": "task_continue", "thread_id": thread_id},
                     }
                 ],
             },

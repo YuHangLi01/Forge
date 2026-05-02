@@ -50,6 +50,11 @@ async def _handle_clarify_submit(
         logger.warning("clarify_submit_missing_ids", request_id=request_id, thread_id=thread_id)
         return {"status": "invalid"}
 
+    if not clarify_answer:
+        logger.info("clarify_submit_empty_answer", thread_id=thread_id)
+        await _reply_text(thread_id, "请输入您的回答后再提交 🙏")
+        return {"status": "invalid", "reason": "empty_answer"}
+
     from app.graph import get_or_init_graph
 
     graph = await get_or_init_graph()
