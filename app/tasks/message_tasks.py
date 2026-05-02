@@ -81,6 +81,51 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
         except Exception:
             logger.exception("msg_dedup_check_failed", message_id=msg.message_id)
 
+    # ── Clarify-reply intercept ──────────────────────────────────────────────
+    # If this chat has a suspended clarify thread, treat the incoming message
+    # as the user's answer and resume that thread instead of starting a new one.
+    if msg.chat_id and msg.text:
+        try:
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings as _gs_c
+
+            _rc: aioredis.Redis = aioredis.from_url(_gs_c().REDIS_URL)  # type: ignore[no-untyped-call]
+            async with _rc:
+                raw_clarify = await _rc.get(f"pending_clarify:{msg.chat_id}")
+            if raw_clarify:
+                clarify_thread_id = (
+                    raw_clarify.decode() if isinstance(raw_clarify, bytes) else raw_clarify
+                )
+                graph_c = await get_or_init_graph()
+                clarify_config = {"configurable": {"thread_id": clarify_thread_id}}
+                c_state = await graph_c.aget_state(clarify_config)
+                c_vals = (c_state.values or {}) if c_state else {}
+                pending = c_vals.get("pending_user_action") or {}
+                if pending.get("kind") == "clarify":
+                    await graph_c.aupdate_state(
+                        clarify_config,
+                        {"clarify_answer": msg.text.strip(), "pending_user_action": None},
+                        as_node="step_router",
+                    )
+                    async with aioredis.from_url(_gs_c().REDIS_URL) as _rc2:  # type: ignore[no-untyped-call]
+                        await _rc2.delete(f"pending_clarify:{msg.chat_id}")
+                    logger.info(
+                        "clarify_reply_intercepted",
+                        chat_id=msg.chat_id,
+                        clarify_thread=clarify_thread_id,
+                    )
+                    result_c = await graph_c.ainvoke(None, clarify_config)
+                    logger.info("clarify_thread_resumed", status=result_c.get("status"))
+                    return {"status": "completed", "message_id": msg.message_id}
+                else:
+                    # Thread moved on; stale key — clean it up
+                    async with aioredis.from_url(_gs_c().REDIS_URL) as _rc3:  # type: ignore[no-untyped-call]
+                        await _rc3.delete(f"pending_clarify:{msg.chat_id}")
+        except Exception:
+            logger.exception("clarify_reply_intercept_failed", chat_id=msg.chat_id)
+    # ────────────────────────────────────────────────────────────────────────
+
     initial_state = make_agent_state(
         user_id=msg.sender_user_id,
         chat_id=msg.chat_id,

@@ -7,51 +7,30 @@ All functions return a dict that can be passed directly to
 from __future__ import annotations
 
 
-def clarify_card(questions: list[str], request_id: str, thread_id: str) -> dict[str, object]:
-    """Card that asks the user ≤2 clarifying questions with a free-text input.
+def clarify_card(questions: list[str]) -> dict[str, object]:
+    """Card that shows clarifying questions and asks the user to reply in chat.
 
-    Uses Feishu card schema 2.0 so that the `input` element and `form_submit`
-    behavior are supported.  The form field "clarify_answer" is delivered in
-    event.action.form_value when the user clicks 提交回答.
+    Feishu card 2.0 form/input schemas are version-unstable and have caused
+    repeated parse errors (200621, 300123, 11310). The reliable approach is to
+    display the questions and have the user reply as a normal chat message;
+    message_tasks intercepts the next message as the clarify answer.
     """
     questions_md = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions[:2]))
     return {
-        "schema": "2.0",
         "config": {"wide_screen_mode": True},
         "header": {
             "template": "blue",
             "title": {"tag": "plain_text", "content": "需要补充一些信息"},
         },
-        "body": {
-            "elements": [
-                {
-                    "tag": "markdown",
-                    "content": f"为了更好地完成任务，请回答以下问题：\n\n{questions_md}",
-                },
-                {
-                    "tag": "form",
-                    "name": "clarify_form",
-                    "elements": [
-                        {
-                            "tag": "input",
-                            "name": "clarify_answer",
-                            "placeholder": {"tag": "plain_text", "content": "请输入您的回答…"},
-                        },
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "提交回答"},
-                            "type": "primary",
-                            "action_type": "submit_form",
-                            "value": {
-                                "action": "clarify_submit",
-                                "request_id": request_id,
-                                "thread_id": thread_id,
-                            },
-                        },
-                    ],
-                },
-            ]
-        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": (
+                    f"为了更好地完成任务，请回答以下问题：\n\n{questions_md}"
+                    "\n\n**请直接在聊天框输入您的回答后发送。**"
+                ),
+            },
+        ],
     }
 
 
@@ -77,7 +56,7 @@ def plan_preview_card(
             {
                 "tag": "markdown",
                 "content": (
-                    f"**预计步骤：**\n{steps_md}\n\n" f"**总耗时预估：** 约 {total_seconds} 秒"
+                    f"**预计步骤：**\n{steps_md}\n\n**总耗时预估：** 约 {total_seconds} 秒"
                 ),
             },
             {
