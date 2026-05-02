@@ -42,6 +42,10 @@ def route(state: dict[str, Any]) -> str:
     if state.get("pending_user_action"):
         return END
 
+    # ── Priority 2.5: clarify answer received — merge it via clarify_resume ──
+    if state.get("clarify_answer"):
+        return "clarify_resume"
+
     intent = state.get("intent")
 
     # ── Priority 3: modification path ────────────────────────────────────────
@@ -54,8 +58,8 @@ def route(state: dict[str, Any]) -> str:
     if intent is None:
         return "intent_parser"
 
-    # ── Priority 4b: intent too ambiguous ────────────────────────────────────
-    if getattr(intent, "ambiguity_score", 0.0) > 0.7:
+    # ── Priority 4b: intent too ambiguous (max 2 clarify rounds) ────────────
+    if getattr(intent, "ambiguity_score", 0.0) > 0.7 and (state.get("clarify_count") or 0) < 2:
         return "clarify_question"
 
     completed = set(state.get("completed_steps") or [])

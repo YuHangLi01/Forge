@@ -104,5 +104,6 @@ async def clarify_question_node(state: dict[str, Any]) -> dict[str, Any]:
             "chat_id": chat_id,
             "message_id": message_id,
         },
+        "clarify_count": (state.get("clarify_count") or 0) + 1,
         "status": TaskStatus.waiting_human,
     }
