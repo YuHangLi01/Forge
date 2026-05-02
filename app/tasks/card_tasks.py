@@ -33,6 +33,12 @@ async def _handle_card_action_async(payload: dict[str, Any]) -> dict[str, Any]:
         return await _handle_plan_replan(value)
     if action_kind == "task_continue":
         return await _handle_task_continue(value)
+    if action_kind == "checkpoint_resume":
+        return await _handle_checkpoint_resume(value)
+    if action_kind == "mod_target":
+        return await _handle_mod_target(value)
+    if action_kind == "lego_start":
+        return await _handle_lego_start(value)
 
     logger.warning("card_action_unhandled", action_kind=action_kind)
     return {"status": "unhandled"}
@@ -256,3 +262,112 @@ async def _reply_text(message_id: str, text: str) -> None:
         await FeishuAdapter().reply_text(message_id, text)
     except Exception:
         logger.exception("reply_text_failed", message_id=message_id)
+
+
+async def _handle_checkpoint_resume(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '▶️ 继续' on the pause card — resume graph from checkpoint."""
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        logger.warning("checkpoint_resume_missing_thread_id")
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+    from app.schemas.enums import TaskStatus
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        state = await graph.aget_state(config)
+        chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
+
+        await graph.aupdate_state(
+            config,
+            {"pending_user_action": None, "status": TaskStatus.running},
+            as_node="checkpoint_control",
+        )
+        await _send_progress_card(thread_id, "▶️ 继续执行中，请稍候…")
+
+        from app.tasks.message_tasks import resume_graph_task
+
+        resume_graph_task.delay(thread_id, chat_id)
+        logger.info("checkpoint_resumed", thread_id=thread_id)
+        return {"status": "dispatched", "thread_id": thread_id}
+    except Exception:
+        logger.exception("checkpoint_resume_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+
+async def _handle_mod_target(value: dict[str, Any]) -> dict[str, Any]:
+    """User chose a modification target (doc / presentation / both) from clarify card."""
+    thread_id: str = value.get("thread_id", "")
+    target: str = value.get("target", "document")
+    if not thread_id:
+        logger.warning("mod_target_missing_thread_id")
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+    from app.schemas.intent import ModificationIntent
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        state = await graph.aget_state(config)
+        vals = (state.values or {}) if state else {}
+        chat_id: str = vals.get("chat_id", "")
+        pending: dict[str, Any] = vals.get("pending_user_action") or {}
+
+        mod_intent = ModificationIntent(
+            target=target,  # type: ignore[arg-type]
+            scope_type=pending.get("scope_type", "full"),
+            scope_identifier=pending.get("scope_identifier", "全部"),
+            modification_type=pending.get("modification_type", "rewrite"),
+            instruction=pending.get("instruction", ""),
+            ambiguity_high=False,
+        )
+
+        await graph.aupdate_state(
+            config,
+            {"pending_user_action": None, "mod_intent": mod_intent},
+            as_node="mod_intent_parser",
+        )
+        await _send_progress_card(thread_id, "✏️ 正在处理修改，请稍候…")
+
+        from app.tasks.message_tasks import resume_graph_task
+
+        resume_graph_task.delay(thread_id, chat_id)
+        logger.info("mod_target_resolved", thread_id=thread_id, target=target)
+        return {"status": "dispatched", "thread_id": thread_id}
+    except Exception:
+        logger.exception("mod_target_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+
+async def _handle_lego_start(value: dict[str, Any]) -> dict[str, Any]:
+    """User selected lego scenarios — store in Redis and ask for description."""
+    import json as _json
+
+    chat_id: str = value.get("chat_id", "")
+    thread_id: str = value.get("thread_id", "")
+    scenarios: list[str] = value.get("scenarios", [])
+    if not chat_id or not scenarios:
+        logger.warning("lego_start_missing_fields", chat_id=chat_id, scenarios=scenarios)
+        return {"status": "invalid"}
+
+    try:
+        import redis.asyncio as aioredis
+
+        from app.config import get_settings
+
+        r: aioredis.Redis = aioredis.from_url(get_settings().REDIS_URL)  # type: ignore[no-untyped-call]
+        async with r:
+            await r.setex(f"pending_lego:{chat_id}", 300, _json.dumps(scenarios))
+
+        prompt = "好的，请直接在对话框输入你的需求（例如：围绕推送改版做演示）👇"
+        await _reply_text(thread_id, prompt)
+        logger.info("lego_start_waiting", chat_id=chat_id, scenarios=scenarios)
+        return {"status": "waiting_for_text", "scenarios": scenarios}
+    except Exception:
+        logger.exception("lego_start_failed", chat_id=chat_id)
+        return {"status": "error"}

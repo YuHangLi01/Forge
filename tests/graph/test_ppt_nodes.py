@@ -39,7 +39,7 @@ class TestDesignTokens:
         assert resolve_token("技术团队内部分享").name == "tech_dark"
 
     def test_resolve_token_data_audience(self) -> None:
-        assert resolve_token("数据分析汇报").name == "data_driven"
+        assert resolve_token("数据分析报告").name == "data_driven"
 
     def test_resolve_token_narrative_audience(self) -> None:
         assert resolve_token("品牌故事宣传").name == "warm_narrative"

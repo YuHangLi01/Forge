@@ -92,7 +92,7 @@ async def feishu_ppt_write_node(state: dict[str, Any]) -> dict[str, Any]:
         try:
             settings = get_settings()
             async with aioredis.from_url(settings.REDIS_URL) as r:  # type: ignore[no-untyped-call]
-                await r.setex(f"active_doc:{chat_id}", 3600, ppt_artifact.model_dump_json())
+                await r.setex(f"active_ppt:{chat_id}", 3600, ppt_artifact.model_dump_json())
         except Exception:
             logger.exception("feishu_ppt_write_cache_failed", chat_id=chat_id)
 

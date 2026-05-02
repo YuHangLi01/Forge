@@ -37,6 +37,7 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
 
     # Fetch calendar context when the message contains time references.
     calendar_context = ""
+    events: list[Any] = []
     if has_time_word(normalized_text) and user_id:
         try:
             from app.integrations.feishu.calendar import FeishuCalendarClient
@@ -75,5 +76,30 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         logger.exception("intent_parser_llm_failed", fallback=True)
         intent = _FALLBACK_INTENT
+
+    # Emit a calendar clarify card when the intent is ambiguous and multiple events exist.
+    if calendar_context and intent.ambiguity_score >= 0.7 and len(events) >= 2:
+        try:
+            from app.graph.cards.templates import calendar_clarify_card
+            from app.integrations.feishu.adapter import FeishuAdapter
+
+            events_as_dicts = [
+                {"summary": e.summary, "start_time": e.start_time, "end_time": e.end_time}
+                for e in events
+            ]
+            card = calendar_clarify_card(events_as_dicts, thread_id=message_id)
+            await FeishuAdapter().reply_card(message_id, card)
+            logger.info("calendar_clarify_card_sent", event_count=len(events))
+        except Exception:
+            logger.warning("calendar_clarify_card_failed", exc_info=True)
+
+        return {
+            "intent": intent,
+            "pending_user_action": {
+                "kind": "clarify",
+                "thread_id": message_id,
+                "request_id": message_id,
+            },
+        }
 
     return {"intent": intent}

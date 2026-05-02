@@ -90,8 +90,35 @@ class FeishuCalendarClient:
         Raises CalendarFetchError on API failures.
         """
         start_ts, end_ts = _resolve_date_range(date_hint)
-        calendar_id = f"user_{user_id}"
 
+        # Step 1: get the user's primary calendar ID
+        try:
+            from lark_oapi.api.calendar.v4 import ListCalendarRequest
+
+            cal_req = ListCalendarRequest.builder().page_size(10).build()
+            cal_resp = await asyncio.to_thread(self._client.calendar.v4.calendar.list, cal_req)
+        except Exception as exc:
+            raise CalendarFetchError(f"calendar list API error: {exc}") from exc
+
+        if not cal_resp.success():
+            raise CalendarFetchError(
+                f"calendar list API error code {cal_resp.code}: {cal_resp.msg}"
+            )
+
+        calendar_id: str | None = None
+        for cal in (cal_resp.data.calendar_list or []) if cal_resp.data else []:
+            if (
+                getattr(cal, "role", "") in ("owner", "writer")
+                or getattr(cal, "type", "") == "primary"
+            ):
+                calendar_id = getattr(cal, "calendar_id", None)
+                break
+
+        if not calendar_id:
+            # Fallback: use user_id directly (some Feishu tenants support this)
+            calendar_id = user_id
+
+        # Step 2: list events in the date range
         try:
             from lark_oapi.api.calendar.v4 import ListCalendarEventRequest
 

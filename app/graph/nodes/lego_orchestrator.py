@@ -12,6 +12,7 @@ from typing import Any
 import structlog
 
 from app.graph.nodes._decorator import graph_node
+from app.schemas.enums import TaskStatus
 from app.schemas.plan import PlanSchema, PlanStep
 
 logger = structlog.get_logger(__name__)
@@ -72,6 +73,7 @@ def compose_plan(lego_scenarios: list[str]) -> PlanSchema:
 
 @graph_node("lego_orchestrator")
 async def lego_orchestrator_node(state: dict[str, Any]) -> dict[str, Any]:
+    message_id = state.get("message_id", "")
     scenarios: list[str] = state.get("_lego_scenarios") or []
     if not scenarios:
         logger.warning("lego_orchestrator_no_scenarios")
@@ -84,4 +86,12 @@ async def lego_orchestrator_node(state: dict[str, Any]) -> dict[str, Any]:
         step_count=len(plan.steps),
         total_seconds=plan.total_estimated_seconds,
     )
-    return {"plan": plan}
+    pending_action = {
+        "kind": "plan_confirm",
+        "thread_id": message_id,
+    }
+    return {
+        "plan": plan,
+        "pending_user_action": pending_action,
+        "status": TaskStatus.waiting_human,
+    }

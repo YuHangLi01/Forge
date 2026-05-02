@@ -20,7 +20,7 @@ _FALLBACK = ModificationIntent(
     instruction="修改指令解析失败，请重新描述",
 )
 
-_DOC_KEYWORDS_RE = re.compile(r"文档|那段|节|章节|正文")
+_DOC_KEYWORDS_RE = re.compile(r"文档|节|章节|正文")
 _PPT_KEYWORDS_RE = re.compile(r"PPT|ppt|幻灯片|页|slide|演示文稿")
 _AMBIGUOUS_RE = re.compile(r"第\d+个|那个|刚才的|那个")
 
@@ -160,6 +160,9 @@ async def mod_intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 "kind": "mod_target_clarify",
                 "thread_id": message_id,
                 "scope_identifier": mod_intent.scope_identifier,
+                "scope_type": str(mod_intent.scope_type),
+                "modification_type": str(mod_intent.modification_type),
+                "instruction": mod_intent.instruction,
             }
         }
 

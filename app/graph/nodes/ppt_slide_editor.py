@@ -138,13 +138,14 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         instruction=instruction,
         before_summary=target_slide.title[:200],
         after_summary=new_slide.title[:200],
+        target="presentation",
     )
 
     if chat_id and new_artifact.ppt_id:
         try:
             settings = get_settings()
             async with aioredis.from_url(settings.REDIS_URL) as r:  # type: ignore[no-untyped-call]
-                await r.setex(f"active_doc:{chat_id}", 3600, new_artifact.model_dump_json())
+                await r.setex(f"active_ppt:{chat_id}", 3600, new_artifact.model_dump_json())
         except Exception:
             logger.exception("ppt_slide_editor_cache_failed", chat_id=chat_id)
 

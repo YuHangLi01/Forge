@@ -13,14 +13,14 @@ from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
-_SEMAPHORE = asyncio.Semaphore(3)
-
 
 @graph_node("doc_content_gen")
 async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     import app.prompts.doc_content  # noqa: F401
     from app.prompts._versioning import get as get_prompt
     from app.services.llm_service import LLMService
+
+    semaphore = asyncio.Semaphore(3)
 
     message_id: str = state.get("message_id", "")
     pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
@@ -67,7 +67,7 @@ async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
             all_section_titles=all_titles,
         )
 
-        async with _SEMAPHORE:
+        async with semaphore:
             try:
                 content_md: str = await llm.invoke(filled, tier="lite")
             except Exception:
