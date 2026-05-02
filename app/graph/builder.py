@@ -31,7 +31,7 @@ WORK_NODES: list[str] = [
 ]
 
 # Routing/terminal nodes
-ROUTING_NODES: list[str] = ["step_router", "error_handler"]
+ROUTING_NODES: list[str] = ["step_router", "error_handler", "checkpoint_control"]
 
 ALL_NODES: list[str] = WORK_NODES + ROUTING_NODES
 
@@ -82,6 +82,7 @@ _ROUTER_TARGETS: dict[str, str] = {
         "scenario_composer",
         "lego_orchestrator",
         "error_handler",
+        "checkpoint_control",
     ]
 }
 _ROUTER_TARGETS[END] = END
@@ -94,6 +95,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     conditionally routes to the next work node (or END / error_handler).
     step_router routing logic is in app.graph.nodes.step_router.route().
     """
+    from app.graph.nodes.checkpoint_control import checkpoint_control_node
     from app.graph.nodes.clarify_question import clarify_question_node
     from app.graph.nodes.clarify_resume import clarify_resume_node
     from app.graph.nodes.context_retrieval import context_retrieval_node
@@ -140,6 +142,7 @@ def build_graph(checkpointer: Any = None) -> Any:
         graph.add_node(node_name, work_node_impls[node_name])
     graph.add_node("step_router", step_router_node)  # type: ignore[type-var]
     graph.add_node("error_handler", error_handler_node)
+    graph.add_node("checkpoint_control", checkpoint_control_node)
 
     # Entry point
     graph.set_entry_point("preprocess")
@@ -157,5 +160,9 @@ def build_graph(checkpointer: Any = None) -> Any:
 
     # error_handler is a terminal node
     graph.add_edge("error_handler", END)
+
+    # checkpoint_control emits pause card then routes through step_router
+    # (step_router will see pending_user_action={kind:user_paused} and return END)
+    graph.add_edge("checkpoint_control", "step_router")
 
     return graph.compile(checkpointer=checkpointer)

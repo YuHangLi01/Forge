@@ -59,6 +59,16 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     from app.schemas.agent_state import make_agent_state
     from app.schemas.enums import TaskStatus
 
+    # ── Control intent intercept (pause / resume / cancel) ──────────────────
+    if msg.text and msg.chat_id:
+        from app.graph.nodes.checkpoint_control import detect_control_intent
+
+        control = detect_control_intent(msg.text)
+        if control in ("pause", "resume", "cancel"):
+            graph_ctrl = await get_or_init_graph()
+            return await _handle_control_intent(msg, control, graph_ctrl)
+    # ────────────────────────────────────────────────────────────────────────
+
     # Message-level idempotency guard.
     # Feishu retries failed webhook deliveries with a *new* event_id, so the
     # webhook-layer event_id dedup does not protect against Feishu retries.
@@ -286,6 +296,66 @@ def _clear_active_task(chat_id: str, thread_id: str) -> None:
             r.delete(key)
     except Exception:
         logger.exception("active_task_clear_failed", chat_id=chat_id)
+
+
+async def _handle_control_intent(msg: Any, control: str, graph: Any) -> dict[str, Any]:
+    """Handle pause / resume / cancel messages directed at an active graph run."""
+    import redis.asyncio as aioredis
+
+    from app.config import get_settings
+
+    try:
+        settings = get_settings()
+        async with aioredis.from_url(settings.REDIS_URL) as r:  # type: ignore[no-untyped-call]
+            raw = await r.get(f"active_task:{msg.chat_id}")
+        thread_id: str = raw.decode() if isinstance(raw, bytes) else (raw or "")
+    except Exception:
+        logger.exception("control_intent_redis_failed", chat_id=msg.chat_id)
+        thread_id = ""
+
+    if not thread_id:
+        logger.info("no_active_task_for_control", chat_id=msg.chat_id, control=control)
+        return {"status": "no_active_task"}
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    if control == "pause":
+        try:
+            await graph.aupdate_state(
+                config, {"pending_user_action": "pause"}, as_node="step_router"
+            )
+            logger.info("pause_requested", thread_id=thread_id, chat_id=msg.chat_id)
+        except Exception:
+            logger.exception("pause_state_update_failed", thread_id=thread_id)
+        return {"status": "pause_requested", "thread_id": thread_id}
+
+    if control == "resume":
+        try:
+            await graph.aupdate_state(config, {"pending_user_action": None}, as_node="step_router")
+            result = await graph.ainvoke(None, config)
+            logger.info(
+                "graph_resumed_from_pause", thread_id=thread_id, status=result.get("status")
+            )
+        except Exception:
+            logger.exception("resume_failed", thread_id=thread_id)
+        return {"status": "resumed", "thread_id": thread_id}
+
+    if control == "cancel":
+        from app.schemas.enums import TaskStatus
+
+        try:
+            await graph.aupdate_state(
+                config,
+                {"status": TaskStatus.cancelled, "pending_user_action": None},
+                as_node="step_router",
+            )
+            result = await graph.ainvoke(None, config)
+            logger.info("graph_cancelled", thread_id=thread_id, status=result.get("status"))
+        except Exception:
+            logger.exception("cancel_failed", thread_id=thread_id)
+        return {"status": "cancelled", "thread_id": thread_id}
+
+    return {"status": "unknown_control"}
 
 
 async def _handle_stage1(msg: Any) -> dict[str, Any]:

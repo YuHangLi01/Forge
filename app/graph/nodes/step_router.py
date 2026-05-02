@@ -39,7 +39,10 @@ def route(state: dict[str, Any]) -> str:
         return END
 
     # ── Priority 2: waiting for human response ───────────────────────────────
-    if state.get("pending_user_action"):
+    pending = state.get("pending_user_action")
+    if pending == "pause":
+        return "checkpoint_control"
+    if pending:
         return END
 
     # ── Priority 2.5: clarify answer received — merge it via clarify_resume ──
