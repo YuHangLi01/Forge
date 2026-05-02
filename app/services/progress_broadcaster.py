@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Any
 
 import structlog
@@ -97,13 +98,21 @@ class ProgressBroadcaster:
     # ── internal helpers ──────────────────────────────────────────────────────
 
     def _emit(self) -> None:
-        """Throttled emit: schedule async Redis work as fire-and-forget."""
+        """Throttled emit: run async Redis work in an isolated daemon thread.
+
+        create_task() is intentionally NOT used here.  Celery workers run each
+        task on a short-lived asyncio event loop (via run_sync); tasks scheduled
+        with create_task are destroyed when that loop closes before they run,
+        producing "Task was destroyed but it is pending!" warnings and no actual
+        card update.  Running in a daemon thread gives _emit_async its own loop
+        via asyncio.run(), which is independent of the calling loop's lifecycle.
+        """
         card = dict(self._current_card)  # snapshot before any mutation
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._emit_async(card))
-        except RuntimeError:
-            asyncio.run(self._emit_async(card))
+        threading.Thread(
+            target=asyncio.run,
+            args=(self._emit_async(card),),
+            daemon=True,
+        ).start()
 
     async def _emit_async(self, card: dict[str, Any]) -> None:
         """Async core of _emit: acquire throttle lock then update or park."""
