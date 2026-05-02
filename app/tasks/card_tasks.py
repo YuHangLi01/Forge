@@ -76,11 +76,14 @@ async def _handle_clarify_submit(
         logger.exception("clarify_stale_check_failed", thread_id=thread_id)
         return {"status": "error"}
 
-    # Inject answer and clear pending gate, then dispatch to slow queue
+    # Inject answer and clear pending gate, then let step_router route to
+    # clarify_resume.  Using as_node="step_router" causes LangGraph to evaluate
+    # route(new_state) immediately; the new clarify_answer triggers Priority 2.5
+    # → "clarify_resume", so the node body actually runs on next ainvoke.
     await graph.aupdate_state(
         config,
         {"clarify_answer": clarify_answer, "pending_user_action": None},
-        as_node="clarify_resume",
+        as_node="step_router",
     )
 
     await _send_progress_card(thread_id, "⏳ 正在处理您的回答，请稍候…")
@@ -140,11 +143,15 @@ async def _handle_plan_cancel(value: dict[str, Any]) -> dict[str, Any]:
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
+        state = await graph.aget_state(config)
+        chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
+
         await graph.aupdate_state(
             config,
             {"status": TaskStatus.cancelled, "pending_user_action": None, "error": "用户取消计划"},
             as_node="planner",
         )
+        await _clear_active_task_async(chat_id, thread_id)
         await _reply_text(thread_id, "已取消当前任务，如需重新生成请重新发送消息 ✅")
         logger.info("plan_cancelled", thread_id=thread_id)
         return {"status": "cancelled", "thread_id": thread_id}
@@ -166,11 +173,15 @@ async def _handle_plan_replan(value: dict[str, Any]) -> dict[str, Any]:
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
+        state = await graph.aget_state(config)
+        chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
+
         await graph.aupdate_state(
             config,
             {"status": TaskStatus.cancelled, "pending_user_action": None, "error": "用户重新规划"},
             as_node="planner",
         )
+        await _clear_active_task_async(chat_id, thread_id)
         await _reply_text(thread_id, "已取消当前计划，请重新描述您的需求 🔄")
         logger.info("plan_replan_cancelled", thread_id=thread_id)
         return {"status": "cancelled", "thread_id": thread_id}
@@ -204,6 +215,25 @@ async def _handle_task_continue(value: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         logger.exception("task_continue_failed", thread_id=thread_id)
         return {"status": "error"}
+
+
+async def _clear_active_task_async(chat_id: str, thread_id: str) -> None:
+    """Remove active_task Redis key if it still points to this thread."""
+    if not chat_id or not thread_id:
+        return
+    try:
+        import redis.asyncio as aioredis
+
+        from app.config import get_settings
+
+        r: aioredis.Redis = aioredis.from_url(get_settings().REDIS_URL)  # type: ignore[no-untyped-call]
+        key = f"active_task:{chat_id}"
+        async with r:
+            raw = await r.get(key)
+            if raw and (raw.decode() if isinstance(raw, bytes) else raw) == thread_id:
+                await r.delete(key)
+    except Exception:
+        logger.exception("active_task_clear_failed", chat_id=chat_id)
 
 
 async def _send_progress_card(message_id: str, text: str) -> None:

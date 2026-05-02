@@ -10,6 +10,11 @@ from app.schemas.modification import ModificationRecord
 from app.schemas.plan import PlanSchema
 
 
+def _capped_mod_history(a: list, b: list) -> list:
+    """Append-only reducer capped at 50 entries."""
+    return (a + b)[-50:]
+
+
 class AgentState(TypedDict, total=False):
     # Identity
     task_id: str
@@ -46,11 +51,13 @@ class AgentState(TypedDict, total=False):
     ppt_slides: list[dict[str, Any]]  # output of ppt_content_gen (per-slide content)
     completed_slide_ids: list[int]  # for breakpoint resume in ppt_content_gen
 
-    # Modification history — each edit appended; capped at 50 in doc_section_editor
-    modification_history: Annotated[list[ModificationRecord], operator.add]  # reducer: append-only
+    # Modification history — capped reducer prevents unbounded growth
+    modification_history: Annotated[list[ModificationRecord], _capped_mod_history]
 
-    # Human-in-the-loop: set by clarify_question, consumed + cleared by clarify_resume
+    # Human-in-the-loop: clarify flow
     pending_user_action: dict[str, Any] | None
+    clarify_answer: str | None  # injected by card_tasks when user submits the clarify card
+    clarify_count: int  # how many clarify rounds have fired; guards against infinite loops
 
     # Lifecycle
     status: TaskStatus
