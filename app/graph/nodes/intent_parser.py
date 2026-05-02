@@ -23,17 +23,45 @@ _FALLBACK_INTENT = IntentSchema(
 
 @graph_node("intent_parser")
 async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
-    import app.prompts.intent_parser  # noqa: F401  # side-effect: registers PROMPT_V1
+    import app.prompts.intent_parser as _ip_prompts  # noqa: F401  # registers PROMPT_V1/V2
     from app.prompts._versioning import get as get_prompt
+    from app.services.calendar_context import format_events_for_prompt, has_time_word
     from app.services.llm_service import LLMService
 
     message_id: str = state.get("message_id", "")
+    user_id: str = state.get("user_id", "")
     pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
     pb.begin_node("🧠 理解意图")
 
     normalized_text: str = state.get("normalized_text", "")
-    prompt_version = get_prompt("intent_parser")
-    filled_prompt = prompt_version.text.format(user_message=normalized_text)
+
+    # Fetch calendar context when the message contains time references.
+    calendar_context = ""
+    events: list[Any] = []
+    if has_time_word(normalized_text) and user_id:
+        try:
+            from app.integrations.feishu.calendar import FeishuCalendarClient
+
+            client = FeishuCalendarClient()
+            events = await client.get_events_around(user_id, normalized_text)
+            calendar_context = format_events_for_prompt(events)
+            logger.debug("calendar_context_fetched", event_count=len(events))
+        except Exception:
+            logger.warning("calendar_context_fetch_failed", user_id=user_id)
+            calendar_context = ""
+
+    # Use V2 prompt when calendar context is available; fall back to V1.
+    if calendar_context:
+        from app.prompts.intent_parser import PROMPT_V2
+
+        filled_prompt = PROMPT_V2.text.format(
+            user_message=normalized_text, calendar_context=calendar_context
+        )
+        prompt_version_name = "v2"
+    else:
+        prompt_version = get_prompt("intent_parser")
+        filled_prompt = prompt_version.text.format(user_message=normalized_text)
+        prompt_version_name = prompt_version.version
 
     llm = LLMService()
     try:
@@ -42,10 +70,36 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
             "intent_parsed",
             task_type=intent.task_type,
             ambiguity_score=intent.ambiguity_score,
-            prompt_version=prompt_version.version,
+            prompt_version=prompt_version_name,
+            calendar_context_used=bool(calendar_context),
         )
     except Exception:
         logger.exception("intent_parser_llm_failed", fallback=True)
         intent = _FALLBACK_INTENT
+
+    # Emit a calendar clarify card when the intent is ambiguous and multiple events exist.
+    if calendar_context and intent.ambiguity_score >= 0.7 and len(events) >= 2:
+        try:
+            from app.graph.cards.templates import calendar_clarify_card
+            from app.integrations.feishu.adapter import FeishuAdapter
+
+            events_as_dicts = [
+                {"summary": e.summary, "start_time": e.start_time, "end_time": e.end_time}
+                for e in events
+            ]
+            card = calendar_clarify_card(events_as_dicts, thread_id=message_id)
+            await FeishuAdapter().reply_card(message_id, card)
+            logger.info("calendar_clarify_card_sent", event_count=len(events))
+        except Exception:
+            logger.warning("calendar_clarify_card_failed", exc_info=True)
+
+        return {
+            "intent": intent,
+            "pending_user_action": {
+                "kind": "clarify",
+                "thread_id": message_id,
+                "request_id": message_id,
+            },
+        }
 
     return {"intent": intent}

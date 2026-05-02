@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     CELERY_TASK_SOFT_TIME_LIMIT: int = Field(default=300, description="任务软超时秒数")
     CELERY_WORKER_CONCURRENCY: int = Field(default=4, description="Celery Worker 并发数")
 
+    # Feishu Calendar OAuth (user-level, needed for calendar event listing)
+    FEISHU_CALENDAR_USER_TOKEN: str = Field(
+        default="",
+        description=(
+            "飞书日历用户 OAuth Token（需要 calendar:event:readonly scope）。"
+            "获取步骤：飞书开放平台 → 凭证与基础信息 → 权限管理 → 开启 calendar:event:readonly；"
+            "然后走 OAuth 2.0 授权码流程获取 user_access_token 填入此处。"
+        ),
+    )
+
     # Feature stage
     FORGE_STAGE: int = Field(default=2, description="当前功能阶段：2=doc only，3=doc+ppt")
 

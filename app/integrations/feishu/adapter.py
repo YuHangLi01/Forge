@@ -329,6 +329,24 @@ class FeishuAdapter:
             blocks.append({"block_id": item.block_id, "block_type": item.block_type})
         return blocks
 
+    async def get_doc_text(self, doc_token: str) -> str:
+        """Return the plain-text content of a Feishu document via the raw_content API.
+
+        Returns an empty string on any failure so callers can degrade gracefully.
+        """
+        try:
+            from lark_oapi.api.docx.v1 import RawContentDocumentRequest
+
+            req = RawContentDocumentRequest.builder().document_id(doc_token).lang(0).build()
+            resp = await asyncio.to_thread(self._client.docx.v1.document.raw_content, req)
+            if resp.success() and resp.data:
+                return resp.data.content or ""
+            logger.warning("get_doc_text_api_error", doc_token=doc_token, code=resp.code)
+            return ""
+        except Exception:
+            logger.exception("get_doc_text_failed", doc_token=doc_token)
+            return ""
+
     @retry(
         retry=retry_if_exception_type(FeishuRateLimitError),
         stop=stop_after_attempt(3),

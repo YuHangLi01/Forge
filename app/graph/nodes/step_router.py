@@ -36,10 +36,19 @@ def route(state: dict[str, Any]) -> str:
 
     # Completed is also terminal — prevents modify-path or plan-path from looping.
     if status == TaskStatus.completed:
-        return END
+        _plan = state.get("plan")
+        if _plan is None:
+            return END
+        _done = set(state.get("completed_steps") or [])
+        if _plan.next_runnable_step(_done) is None:
+            return END
+        # Plan has more steps — fall through to plan-following logic
 
     # ── Priority 2: waiting for human response ───────────────────────────────
-    if state.get("pending_user_action"):
+    pending = state.get("pending_user_action")
+    if pending == "pause":
+        return "checkpoint_control"
+    if pending:
         return END
 
     # ── Priority 2.5: clarify answer received — merge it via clarify_resume ──
@@ -52,7 +61,9 @@ def route(state: dict[str, Any]) -> str:
     if intent is not None and getattr(intent, "task_type", None) == TaskType.modify_existing:
         if state.get("mod_intent") is None:
             return "mod_intent_parser"
-        return "doc_section_editor"
+        mod_intent_obj = state.get("mod_intent")
+        target = str(getattr(mod_intent_obj, "target", "document"))
+        return "ppt_slide_editor" if target == "presentation" else "doc_section_editor"
 
     # ── Priority 4a: no intent yet ───────────────────────────────────────────
     if intent is None:
@@ -71,6 +82,14 @@ def route(state: dict[str, Any]) -> str:
     # ── Priority 4d: plan not built yet ─────────────────────────────────────
     plan = state.get("plan")
     if plan is None:
+        # If scenarios are pre-set (lego command or scenario_composer already ran), go direct.
+        if state.get("_lego_scenarios"):
+            return "lego_orchestrator"
+        output_formats = list(getattr(intent, "output_formats", []))
+        has_doc = any(str(f) == "document" for f in output_formats)
+        has_ppt = any(str(f) == "presentation" for f in output_formats)
+        if has_doc and has_ppt:
+            return "scenario_composer"
         return "planner"
 
     # ── Priority 4e/f: follow the plan ──────────────────────────────────────

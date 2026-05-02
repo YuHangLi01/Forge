@@ -15,8 +15,6 @@ from app.graph.nodes._decorator import graph_node
 
 logger = structlog.get_logger(__name__)
 
-_SEMAPHORE = asyncio.Semaphore(3)
-
 
 def _build_slide_titles_summary(slides: list[dict[str, Any]]) -> str:
     return " | ".join(
@@ -30,6 +28,7 @@ async def _gen_slide_content(
     target_audience: str,
     slide_titles_summary: str,
     llm: Any,
+    semaphore: asyncio.Semaphore,
 ) -> dict[str, Any]:
     from app.prompts.ppt_content import PAGE_TYPE_PROMPTS
 
@@ -45,7 +44,7 @@ async def _gen_slide_content(
         slide_titles_summary=slide_titles_summary,
     )
 
-    async with _SEMAPHORE:
+    async with semaphore:
         try:
             raw: str = await llm.invoke(filled, tier="lite")
             # Strip markdown code fence if present
@@ -78,6 +77,8 @@ async def _gen_slide_content(
 async def ppt_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     from app.services.llm_service import LLMService
 
+    semaphore = asyncio.Semaphore(3)
+
     raw_brief: dict[str, Any] = state.get("ppt_brief") or {}
     ppt_title: str = raw_brief.get("title", "演示文稿")
     target_audience: str = raw_brief.get("target_audience", "通用听众")
@@ -98,11 +99,11 @@ async def ppt_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
             return existing_slides.get(idx, slide)
 
         return await _gen_slide_content(
-            slide, ppt_title, target_audience, slide_titles_summary, llm
+            slide, ppt_title, target_audience, slide_titles_summary, llm, semaphore
         )
 
     results = await asyncio.gather(*[_process_slide(s) for s in slides])
     slide_list = sorted(results, key=lambda s: s.get("slide_index", 0))
 
     logger.info("ppt_content_gen_done", n_slides=len(slide_list))
-    return {"ppt_slides": slide_list}
+    return {"ppt_slides": slide_list, "completed_steps": ["ppt_content_gen"]}

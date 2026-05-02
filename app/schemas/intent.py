@@ -23,3 +23,4 @@ class ModificationIntent(BaseModel):
     scope_identifier: str = Field(..., description="范围标识符, e.g. '第三页' / block_id")
     modification_type: ModificationType
     instruction: str = Field(..., description="具体修改指令")
+    ambiguity_high: bool = Field(default=False, description="是否需要用户确认修改对象")

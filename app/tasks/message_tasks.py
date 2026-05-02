@@ -59,6 +59,20 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     from app.schemas.agent_state import make_agent_state
     from app.schemas.enums import TaskStatus
 
+    # /lego slash command — emit scenario selector card
+    if msg.text and msg.text.strip().startswith("/lego") and msg.message_id and msg.chat_id:
+        return await _handle_lego_command(msg)
+
+    # ── Control intent intercept (pause / resume / cancel) ──────────────────
+    if msg.text and msg.chat_id:
+        from app.graph.nodes.checkpoint_control import detect_control_intent
+
+        control = detect_control_intent(msg.text)
+        if control in ("pause", "resume", "cancel"):
+            graph_ctrl = await get_or_init_graph()
+            return await _handle_control_intent(msg, control, graph_ctrl)
+    # ────────────────────────────────────────────────────────────────────────
+
     # Message-level idempotency guard.
     # Feishu retries failed webhook deliveries with a *new* event_id, so the
     # webhook-layer event_id dedup does not protect against Feishu retries.
@@ -126,6 +140,28 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
             logger.exception("clarify_reply_intercept_failed", chat_id=msg.chat_id)
     # ────────────────────────────────────────────────────────────────────────
 
+    # Lego text intercept — user typed their description after clicking a lego scenario button
+    if msg.chat_id and msg.text and not (msg.text or "").strip().startswith("/"):
+        try:
+            import json as _json
+
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings as _gs_lego
+
+            _rl: aioredis.Redis = aioredis.from_url(_gs_lego().REDIS_URL)  # type: ignore[no-untyped-call]
+            async with _rl:
+                raw_lego = await _rl.get(f"pending_lego:{msg.chat_id}")
+            if raw_lego:
+                lego_scenarios = _json.loads(
+                    raw_lego.decode() if isinstance(raw_lego, bytes) else raw_lego
+                )
+                async with aioredis.from_url(_gs_lego().REDIS_URL) as _rl2:  # type: ignore[no-untyped-call]
+                    await _rl2.delete(f"pending_lego:{msg.chat_id}")
+                return await _handle_lego_text(msg, lego_scenarios)
+        except Exception:
+            logger.exception("lego_text_intercept_failed", chat_id=msg.chat_id)
+
     initial_state = make_agent_state(
         user_id=msg.sender_user_id,
         chat_id=msg.chat_id,
@@ -150,6 +186,22 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
                 initial_state["doc"] = DocArtifact.model_validate_json(raw_doc)
         except Exception:
             logger.exception("active_doc_restore_failed", chat_id=msg.chat_id)
+
+    # Restore most-recent PPTArtifact for modify requests
+    if msg.chat_id:
+        try:
+            import redis.asyncio as aioredis
+
+            from app.config import get_settings as _gs3
+            from app.schemas.artifacts import PPTArtifact
+
+            _r3: aioredis.Redis = aioredis.from_url(_gs3().REDIS_URL)  # type: ignore[no-untyped-call]
+            async with _r3:
+                raw_ppt = await _r3.get(f"active_ppt:{msg.chat_id}")
+            if raw_ppt:
+                initial_state["ppt"] = PPTArtifact.model_validate_json(raw_ppt)
+        except Exception:
+            logger.exception("active_ppt_restore_failed", chat_id=msg.chat_id)
 
     if msg.message_type == "audio" and msg.file_key:
         initial_state["attachments"] = [
@@ -288,6 +340,66 @@ def _clear_active_task(chat_id: str, thread_id: str) -> None:
         logger.exception("active_task_clear_failed", chat_id=chat_id)
 
 
+async def _handle_control_intent(msg: Any, control: str, graph: Any) -> dict[str, Any]:
+    """Handle pause / resume / cancel messages directed at an active graph run."""
+    import redis.asyncio as aioredis
+
+    from app.config import get_settings
+
+    try:
+        settings = get_settings()
+        async with aioredis.from_url(settings.REDIS_URL) as r:  # type: ignore[no-untyped-call]
+            raw = await r.get(f"active_task:{msg.chat_id}")
+        thread_id: str = raw.decode() if isinstance(raw, bytes) else (raw or "")
+    except Exception:
+        logger.exception("control_intent_redis_failed", chat_id=msg.chat_id)
+        thread_id = ""
+
+    if not thread_id:
+        logger.info("no_active_task_for_control", chat_id=msg.chat_id, control=control)
+        return {"status": "no_active_task"}
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    if control == "pause":
+        try:
+            await graph.aupdate_state(
+                config, {"pending_user_action": "pause"}, as_node="step_router"
+            )
+            logger.info("pause_requested", thread_id=thread_id, chat_id=msg.chat_id)
+        except Exception:
+            logger.exception("pause_state_update_failed", thread_id=thread_id)
+        return {"status": "pause_requested", "thread_id": thread_id}
+
+    if control == "resume":
+        try:
+            await graph.aupdate_state(config, {"pending_user_action": None}, as_node="step_router")
+            # Dispatch to slow queue — graph execution is long-running
+            resume_graph_task.delay(thread_id, msg.chat_id or "")
+            logger.info("resume_dispatched", thread_id=thread_id)
+        except Exception:
+            logger.exception("resume_failed", thread_id=thread_id)
+        return {"status": "resumed", "thread_id": thread_id}
+
+    if control == "cancel":
+        from app.schemas.enums import TaskStatus
+
+        try:
+            await graph.aupdate_state(
+                config,
+                {"status": TaskStatus.cancelled, "pending_user_action": None},
+                as_node="step_router",
+            )
+            # Dispatch cancel through slow queue so error_handler can clean up
+            resume_graph_task.delay(thread_id, msg.chat_id or "")
+            logger.info("cancel_dispatched", thread_id=thread_id)
+        except Exception:
+            logger.exception("cancel_failed", thread_id=thread_id)
+        return {"status": "cancelled", "thread_id": thread_id}
+
+    return {"status": "unknown_control"}
+
+
 async def _handle_stage1(msg: Any) -> dict[str, Any]:
     """Stage 1: direct Celery → service calls (default path, FORGE_USE_GRAPH=False)."""
     from app.integrations.feishu.adapter import FeishuAdapter
@@ -350,3 +462,70 @@ def _parse_message_content(raw_content: str | None, message_type: str) -> str:
     except (json.JSONDecodeError, TypeError):
         pass
     return ""
+
+
+async def _handle_lego_command(msg: Any) -> dict[str, Any]:
+    """Emit the lego scenario selector card in response to a /lego command."""
+    from app.graph.cards.templates import lego_scenario_select_card
+    from app.integrations.feishu.adapter import FeishuAdapter
+
+    card = lego_scenario_select_card(thread_id=msg.message_id, chat_id=msg.chat_id)
+    try:
+        await FeishuAdapter().reply_card(msg.message_id, card)
+    except Exception:
+        logger.exception("lego_command_card_failed", message_id=msg.message_id)
+    return {"status": "lego_card_sent", "message_id": msg.message_id}
+
+
+async def _handle_lego_text(msg: Any, lego_scenarios: list[str]) -> dict[str, Any]:
+    """Start a graph run with pre-set lego scenarios and user text as the goal."""
+    from app.db.engine import get_session
+    from app.graph import get_or_init_graph
+    from app.repositories.task_repo import create_task
+    from app.schemas.agent_state import make_agent_state
+    from app.schemas.enums import OutputFormat, TaskType
+    from app.schemas.intent import IntentSchema
+
+    initial_state = make_agent_state(
+        user_id=msg.sender_user_id,
+        chat_id=msg.chat_id,
+        message_id=msg.message_id,
+    )
+    initial_state["raw_input"] = msg.text
+    initial_state["_lego_scenarios"] = lego_scenarios
+
+    # Synthetic intent so step_router skips intent_parser but still runs context_retrieval
+    formats = []
+    if "C" in lego_scenarios:
+        formats.append(OutputFormat.document)
+    if "D" in lego_scenarios:
+        formats.append(OutputFormat.presentation)
+    initial_state["intent"] = IntentSchema(
+        task_type=TaskType.create_new,
+        primary_goal=msg.text or "生成内容",
+        output_formats=formats,
+        ambiguity_score=0.0,
+    )
+    initial_state["normalized_text"] = msg.text or ""
+
+    task_id: str = initial_state["task_id"]
+    try:
+        async with get_session() as session:
+            await create_task(
+                session,
+                task_id=task_id,
+                user_id=msg.sender_user_id,
+                chat_id=msg.chat_id,
+            )
+    except Exception:
+        logger.exception("lego_task_create_failed", task_id=task_id)
+
+    config = {"configurable": {"thread_id": msg.message_id or ""}}
+    try:
+        graph = await get_or_init_graph()
+        result = await graph.ainvoke(initial_state, config=config)
+        logger.info("lego_graph_done", status=result.get("status"))
+        return {"status": "completed", "message_id": msg.message_id}
+    except Exception:
+        logger.exception("lego_graph_failed", message_id=msg.message_id)
+        return {"status": "error"}

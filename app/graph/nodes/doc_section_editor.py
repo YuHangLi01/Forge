@@ -129,6 +129,7 @@ async def doc_section_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         instruction=instruction,
         before_summary=before_summary,
         after_summary=after_summary,
+        target="document",
     )
 
     # Cap history at _MAX_HISTORY (reducer adds, so we trim proactively)

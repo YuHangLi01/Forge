@@ -8,10 +8,12 @@ deterministic .pptx byte stream. It intentionally has zero network or
 Feishu coupling so it can be unit-tested without any infra.
 """
 
+import contextlib
 import io
 from typing import Any
 
 from pptx import Presentation
+from pptx.dml.color import RGBColor
 from pptx.util import Inches, Pt
 
 from app.schemas.artifacts import SlideSchema
@@ -35,6 +37,11 @@ _LAYOUT_INDEX_BY_KIND: dict[SlideLayout, int] = {
 }
 
 
+def _hex_to_rgb(hex_color: str) -> RGBColor:
+    h = hex_color.lstrip("#")
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
 class PptxBuilder:
     """Pure builder: SlideSchema list → PowerPoint bytes."""
 
@@ -43,8 +50,23 @@ class PptxBuilder:
         title: str,
         slides: list[SlideSchema],
         subtitle: str = "",
+        token_name: str = "minimal",
     ) -> bytes:
-        """Render a deck. Returns raw .pptx bytes (zip-format)."""
+        """Render a deck. Returns raw .pptx bytes (zip-format).
+
+        token_name maps to a DesignToken preset (see app.services.design_tokens).
+        Font sizes and text colour from the token are applied to all slides.
+        """
+        from app.services.design_tokens import get_preset
+
+        try:
+            token = get_preset(token_name)
+        except KeyError:
+            from app.services.design_tokens import get_preset as _gp
+
+            token = _gp("minimal")
+
+        self._token = token
         prs: Any = Presentation()
 
         # Cover slide is always first; if the outline already starts with a cover,
@@ -65,10 +87,10 @@ class PptxBuilder:
         slide = prs.slides.add_slide(layout)
         if slide.shapes.title is not None:
             slide.shapes.title.text = title
-            self._set_run_size(slide.shapes.title, _TITLE_FONT_PT)
+            self._style_shape(slide.shapes.title, self._token.font_size_title)
         if subtitle and len(slide.placeholders) > 1:
             slide.placeholders[1].text = subtitle
-            self._set_run_size(slide.placeholders[1], _SUBTITLE_FONT_PT)
+            self._style_shape(slide.placeholders[1], _SUBTITLE_FONT_PT)
 
     def _add_slide(self, prs: Any, schema: SlideSchema, deck_title: str) -> None:
         layout_idx = _LAYOUT_INDEX_BY_KIND.get(schema.layout, 1)
@@ -79,15 +101,15 @@ class PptxBuilder:
         if schema.layout == SlideLayout.cover:
             if slide.shapes.title is not None:
                 slide.shapes.title.text = schema.title
-                self._set_run_size(slide.shapes.title, _TITLE_FONT_PT)
+                self._style_shape(slide.shapes.title, self._token.font_size_title)
             if schema.bullets and len(slide.placeholders) > 1:
                 slide.placeholders[1].text = schema.bullets[0]
-                self._set_run_size(slide.placeholders[1], _SUBTITLE_FONT_PT)
+                self._style_shape(slide.placeholders[1], _SUBTITLE_FONT_PT)
             return
 
         if slide.shapes.title is not None:
             slide.shapes.title.text = schema.title
-            self._set_run_size(slide.shapes.title, _TITLE_FONT_PT)
+            self._style_shape(slide.shapes.title, self._token.font_size_title)
 
         body_ph = self._find_body_placeholder(slide)
         if body_ph is not None and schema.bullets:
@@ -98,12 +120,25 @@ class PptxBuilder:
                 p.text = bullet
                 p.level = 0
                 for run in p.runs:
-                    run.font.size = Pt(_BULLET_FONT_PT)
+                    run.font.size = Pt(self._token.font_size_body)
+                    run.font.color.rgb = _hex_to_rgb(self._token.text_color)
         elif body_ph is None and schema.bullets:
-            self._add_text_box(slide, schema.bullets)
+            self._add_text_box(slide, schema.bullets, self._token.font_size_body)
 
         if schema.speaker_notes:
             slide.notes_slide.notes_text_frame.text = schema.speaker_notes
+
+    def _style_shape(self, shape: Any, size_pt: int) -> None:
+        """Apply token text colour and the given font size to all runs in a shape."""
+        try:
+            tf = shape.text_frame
+        except AttributeError:
+            return
+        for paragraph in tf.paragraphs:
+            for run in paragraph.runs:
+                run.font.size = Pt(size_pt)
+                with contextlib.suppress(Exception):
+                    run.font.color.rgb = _hex_to_rgb(self._token.text_color)
 
     @staticmethod
     def _find_body_placeholder(slide: Any) -> Any:
@@ -117,8 +152,7 @@ class PptxBuilder:
             return ph
         return None
 
-    @staticmethod
-    def _add_text_box(slide: Any, bullets: list[str]) -> None:
+    def _add_text_box(self, slide: Any, bullets: list[str], font_size_pt: int) -> None:
         """Fallback: add a textbox when no body placeholder exists (e.g. blank layout)."""
         left = Inches(0.5)
         top = Inches(1.5)
@@ -130,7 +164,9 @@ class PptxBuilder:
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.text = bullet
             for run in p.runs:
-                run.font.size = Pt(_BULLET_FONT_PT)
+                run.font.size = Pt(font_size_pt)
+                with contextlib.suppress(Exception):
+                    run.font.color.rgb = _hex_to_rgb(self._token.text_color)
 
     @staticmethod
     def _set_run_size(shape: Any, size_pt: int) -> None:

@@ -4,54 +4,66 @@ The broadcaster must respect the 1-second throttle: if begin_node is called
 5 times within 1 second, update_card should be called at most once immediately
 (the first call acquires the Redis lock) — the remaining payloads are parked
 in progress_pending:{message_id} for the flush task.
+
+All Redis I/O is now async (redis.asyncio); tests mock _emit_async directly or
+use AsyncMock to patch the aioredis connection.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 import app.services.progress_broadcaster as pb_mod
 
 
-def _make_redis_mock(acquired_first: bool = True) -> MagicMock:
-    """Return a mock Redis client where SETNX returns True the first time, False after."""
-    r = MagicMock()
-    r.set.side_effect = [acquired_first] + [False] * 10
-    r.getdel.return_value = None
-    return r
+@pytest.mark.asyncio
+async def test_broadcaster_sends_immediately_when_lock_acquired() -> None:
+    """_emit_async should call _send_update_async when throttle lock is acquired."""
+    b = pb_mod.ProgressBroadcaster(message_id="om_test", thread_id="thread_test")
+    b._current_card = pb_mod.ProgressBroadcaster._build_progress_card("test")
+
+    mock_r = AsyncMock()
+    mock_r.set = AsyncMock(return_value=True)  # lock acquired
+    mock_r.__aenter__ = AsyncMock(return_value=mock_r)
+    mock_r.__aexit__ = AsyncMock(return_value=False)
+
+    card = {"test": "card"}
+
+    with (
+        patch.object(b, "_send_update_async", new_callable=AsyncMock) as mock_send,
+        patch("redis.asyncio.from_url", return_value=mock_r),
+    ):
+        await b._emit_async(card)
+
+    mock_send.assert_called_once_with(mock_r, card)
 
 
-def test_broadcaster_sends_immediately_when_lock_acquired() -> None:
-    """First begin_node call should fire _send_update directly."""
-    mock_redis = _make_redis_mock(acquired_first=True)
-    mock_redis.get.return_value = None  # no cached card_message_id yet
+@pytest.mark.asyncio
+async def test_broadcaster_parks_when_throttled() -> None:
+    """_emit_async should park to pending key when throttle lock is NOT acquired."""
+    b = pb_mod.ProgressBroadcaster(message_id="om_throttled", thread_id="t1")
 
-    with patch.object(pb_mod.redis, "from_url", return_value=mock_redis):
-        b = pb_mod.ProgressBroadcaster(message_id="om_test", thread_id="thread_test")
-        with patch.object(b, "_send_update") as mock_send:
-            b.begin_node("doc_structure_gen")
-            # Lock acquired → _send_update called
-            mock_send.assert_called_once()
+    mock_r = AsyncMock()
+    mock_r.set = AsyncMock(side_effect=[False, None])  # lock not acquired, then park
+    mock_r.__aenter__ = AsyncMock(return_value=mock_r)
+    mock_r.__aexit__ = AsyncMock(return_value=False)
 
-    # Redis set called once (for throttle lock)
-    assert mock_redis.set.call_count == 1
+    card = {"throttled": "card"}
 
+    with (
+        patch.object(b, "_send_update_async", new_callable=AsyncMock) as mock_send,
+        patch("redis.asyncio.from_url", return_value=mock_r),
+    ):
+        await b._emit_async(card)
 
-def test_broadcaster_parks_when_throttled() -> None:
-    """Calls that hit the throttle (setnx returns False) should write to pending key."""
-    mock_redis = _make_redis_mock(acquired_first=False)
+    mock_send.assert_not_called()
+    # The pending key should have been written
+    import json
 
-    with patch.object(pb_mod.redis, "from_url", return_value=mock_redis):
-        b = pb_mod.ProgressBroadcaster(message_id="om_throttled", thread_id="t1")
-        with patch.object(b, "_send_update") as mock_send:
-            b.begin_node("doc_content_gen")
-            # Lock NOT acquired → _send_update NOT called
-            mock_send.assert_not_called()
-
-    # set called twice: once for lock attempt (returns False), once to park payload
-    assert mock_redis.set.call_count == 2
-    second_call_args = mock_redis.set.call_args_list[1]
-    assert "progress_pending:om_throttled" in str(second_call_args)
+    pending_key = pb_mod._PENDING_KEY.format(message_id="om_throttled")
+    mock_r.set.assert_any_call(pending_key, json.dumps(card), ex=10)
 
 
 def test_broadcaster_emit_error_bypasses_throttle() -> None:
@@ -77,26 +89,27 @@ def test_react_filter_sanitize_integration() -> None:
         mock_emit.assert_called_once()
 
 
-def test_broadcaster_five_calls_within_second() -> None:
-    """5 rapid begin_node calls: first fires, rest park (simulate 1 lock acquisition)."""
-    mock_redis = MagicMock()
-    # First set call = lock acquired, subsequent ones = throttled
-    mock_redis.set.side_effect = [True] + [False] * 10
+def test_broadcaster_emit_dispatches_task_with_running_loop() -> None:
+    """_emit should call loop.create_task when an event loop is running."""
+    b = pb_mod.ProgressBroadcaster(message_id="om_task", thread_id="t_task")
+    b._current_card = {"some": "card"}
 
-    with patch.object(pb_mod.redis, "from_url", return_value=mock_redis):
-        b = pb_mod.ProgressBroadcaster(message_id="om_burst", thread_id="t_burst")
-        send_count = 0
+    mock_loop = MagicMock()
+    with patch("asyncio.get_running_loop", return_value=mock_loop):
+        b._emit()
 
-        def counting_send(card: object) -> None:  # noqa: ANN401
-            nonlocal send_count
-            send_count += 1
+    mock_loop.create_task.assert_called_once()
 
-        b._send_update = counting_send  # type: ignore[method-assign]
 
-        for i in range(5):
-            b.begin_node(f"node_{i}")
+def test_broadcaster_emit_uses_asyncio_run_without_loop() -> None:
+    """_emit should fall back to asyncio.run when no event loop is running."""
+    b = pb_mod.ProgressBroadcaster(message_id="om_run", thread_id="t_run")
+    b._current_card = {"some": "card"}
 
-    # Only 1 direct send (first acquired lock); rest went to pending key
-    assert send_count == 1
-    # Redis.set called: 1 throttle-acquire + 4 pending-park = 5 times + 1 lock acquire
-    assert mock_redis.set.call_count >= 5
+    with (
+        patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")),
+        patch("asyncio.run") as mock_run,
+    ):
+        b._emit()
+
+    mock_run.assert_called_once()

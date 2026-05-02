@@ -8,6 +8,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.graph.nodes._validators import build_available_nodes_prompt, get_allowed_nodes
+from app.schemas.enums import TaskStatus
 from app.schemas.plan import PlanSchema, PlanStep
 from app.services.progress_broadcaster import ProgressBroadcaster
 
@@ -168,4 +169,4 @@ async def planner_node(state: dict[str, Any]) -> dict[str, Any]:
         "thread_id": message_id,
         "plan_steps": steps_preview,
     }
-    return {"plan": plan, "pending_user_action": pending_action}
+    return {"plan": plan, "pending_user_action": pending_action, "status": TaskStatus.waiting_human}

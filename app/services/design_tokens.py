@@ -94,10 +94,31 @@ _PRESETS: dict[str, DesignToken] = {
 
 # audience keyword → preset name
 _AUDIENCE_MAP: list[tuple[tuple[str, ...], str]] = [
-    (("投资", "investor", "融资", "vc", "基金", "路演"), "corporate"),
+    (
+        (
+            "投资",
+            "investor",
+            "融资",
+            "vc",
+            "基金",
+            "路演",
+            "vp",
+            "高管",
+            "领导",
+            "executive",
+            "管理层",
+            "总裁",
+            "ceo",
+            "董事",
+            "汇报",
+            "述职",
+            "季度",
+        ),
+        "corporate",
+    ),
     (("技术", "tech", "研发", "developer", "工程", "架构"), "tech_dark"),
     (("故事", "narrative", "情感", "文化", "宣传", "品牌"), "warm_narrative"),
-    (("数据", "data", "分析", "report", "汇报", "运营"), "data_driven"),
+    (("数据", "data", "分析", "report", "运营", "指标", "dashboard"), "data_driven"),
 ]
 
 _DEFAULT_PRESET = "minimal"

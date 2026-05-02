@@ -140,6 +140,63 @@ def timeout_card(thread_id: str) -> dict[str, object]:
     }
 
 
+def mod_target_clarify_card(
+    scope_identifier: str,
+    thread_id: str,
+) -> dict[str, object]:
+    """Card asking user to confirm which artifact to modify (doc, ppt, or both)."""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "orange",
+            "title": {"tag": "plain_text", "content": "请确认修改目标"},
+        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": (
+                    f"我看到你的指令可能针对文档或 PPT。" f"请确认「{scope_identifier}」是指哪个？"
+                ),
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": f"📄 文档{scope_identifier}"},
+                        "type": "primary",
+                        "value": {
+                            "action": "mod_target",
+                            "target": "document",
+                            "thread_id": thread_id,
+                        },
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": f"📊 PPT{scope_identifier}"},
+                        "type": "default",
+                        "value": {
+                            "action": "mod_target",
+                            "target": "presentation",
+                            "thread_id": thread_id,
+                        },
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📄+📊 都改"},
+                        "type": "default",
+                        "value": {
+                            "action": "mod_target",
+                            "target": "both",
+                            "thread_id": thread_id,
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+
 def error_card(message: str) -> dict[str, object]:
     """Simple error notification card."""
     return {
@@ -150,5 +207,115 @@ def error_card(message: str) -> dict[str, object]:
         },
         "elements": [
             {"tag": "markdown", "content": f"**错误信息：** {message}"},
+        ],
+    }
+
+
+def calendar_clarify_card(
+    events: list[dict[str, str]],
+    thread_id: str,
+) -> dict[str, object]:
+    """Card showing calendar events as buttons for the user to select.
+
+    Each event dict has keys: summary, start_time, end_time.
+    """
+    buttons = []
+    for evt in events[:5]:
+        summary = evt.get("summary", "(无标题)")
+        start = evt.get("start_time", "")
+        label = f"📅 {summary}" + (f"  {start}" if start else "")
+        buttons.append(
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": label},
+                "type": "default",
+                "value": {
+                    "action": "clarify_submit",
+                    "thread_id": thread_id,
+                    "request_id": thread_id,
+                    "clarify_answer": summary,
+                },
+            }
+        )
+    buttons.append(
+        {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "其他（自行输入）"},
+            "type": "default",
+            "value": {
+                "action": "clarify_submit",
+                "thread_id": thread_id,
+                "request_id": thread_id,
+                "clarify_answer": "其他",
+            },
+        }
+    )
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": "请选择是哪个日程"},
+        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": "我看到明天有以下日程，请选择您要准备的是哪一个：",
+            },
+            {"tag": "action", "actions": buttons},
+        ],
+    }
+
+
+def lego_scenario_select_card(thread_id: str, chat_id: str) -> dict[str, object]:
+    """Card for selecting Lego scenario combination (C=doc, D=PPT)."""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": "🧱 Lego 场景组合器"},
+        },
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": "**请选择要执行的场景组合：**\n点击后请在对话框输入您的需求。",
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📄 C 文档 + 📊 D PPT"},
+                        "type": "primary",
+                        "value": {
+                            "action": "lego_start",
+                            "scenarios": ["C", "D"],
+                            "thread_id": thread_id,
+                            "chat_id": chat_id,
+                        },
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📄 仅文档"},
+                        "type": "default",
+                        "value": {
+                            "action": "lego_start",
+                            "scenarios": ["C"],
+                            "thread_id": thread_id,
+                            "chat_id": chat_id,
+                        },
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📊 仅 PPT"},
+                        "type": "default",
+                        "value": {
+                            "action": "lego_start",
+                            "scenarios": ["D"],
+                            "thread_id": thread_id,
+                            "chat_id": chat_id,
+                        },
+                    },
+                ],
+            },
         ],
     }
