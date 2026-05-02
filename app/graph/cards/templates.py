@@ -41,16 +41,12 @@ def clarify_card(questions: list[str], request_id: str, thread_id: str) -> dict[
                             "tag": "button",
                             "text": {"tag": "plain_text", "content": "提交回答"},
                             "type": "primary",
-                            "behaviors": [
-                                {
-                                    "type": "callback",
-                                    "value": {
-                                        "action": "clarify_submit",
-                                        "request_id": request_id,
-                                        "thread_id": thread_id,
-                                    },
-                                }
-                            ],
+                            "action_type": "submit_form",
+                            "value": {
+                                "action": "clarify_submit",
+                                "request_id": request_id,
+                                "thread_id": thread_id,
+                            },
                         },
                     ],
                 },
