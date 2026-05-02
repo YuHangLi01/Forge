@@ -74,10 +74,10 @@ class ProgressBroadcaster:
         card = doc_done_card(label=label, url=url)
         self._send_now(card)
 
-    def emit_clarify(self, questions: list[str], request_id: str) -> None:
+    def emit_clarify(self, questions: list[str], request_id: str) -> None:  # noqa: ARG002
         from app.graph.cards.templates import clarify_card
 
-        card = clarify_card(questions=questions, request_id=request_id, thread_id=self.thread_id)
+        card = clarify_card(questions=questions)
         self._send_now(card)
 
     def emit_plan_preview(self, steps: list[dict[str, Any]], total_seconds: int) -> None:
