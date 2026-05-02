@@ -1,6 +1,37 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.enums import ModificationType, OutputFormat, ScopeType, TaskType
+
+# LLM 有时会输出不在枚举里的近义词，在 Pydantic 校验前归一化
+_SCOPE_TYPE_ALIASES: dict[str, str] = {
+    "page": "specific_slide",
+    "specific_page": "specific_slide",
+    "slide": "specific_slide",
+    "section": "specific_section",
+    "block": "specific_block",
+    "paragraph": "specific_block",
+    "all": "full",
+    "whole": "full",
+    "entire": "full",
+}
+
+_MODIFICATION_TYPE_ALIASES: dict[str, str] = {
+    "add_chart": "append",
+    "add_image": "append",
+    "add_element": "append",
+    "add_content": "append",
+    "add": "append",
+    "insert": "append",
+    "replace": "rewrite",
+    "update": "rewrite",
+    "modify": "rewrite",
+    "edit": "rewrite",
+    "revise": "rewrite",
+    "format": "reformat",
+    "style": "reformat",
+    "remove": "delete",
+    "erase": "delete",
+}
 
 
 class IntentSchema(BaseModel):
@@ -24,3 +55,17 @@ class ModificationIntent(BaseModel):
     modification_type: ModificationType
     instruction: str = Field(..., description="具体修改指令")
     ambiguity_high: bool = Field(default=False, description="是否需要用户确认修改对象")
+
+    @field_validator("scope_type", mode="before")
+    @classmethod
+    def normalize_scope_type(cls, v: object) -> object:
+        if isinstance(v, str):
+            return _SCOPE_TYPE_ALIASES.get(v.lower(), v)
+        return v
+
+    @field_validator("modification_type", mode="before")
+    @classmethod
+    def normalize_modification_type(cls, v: object) -> object:
+        if isinstance(v, str):
+            return _MODIFICATION_TYPE_ALIASES.get(v.lower(), v)
+        return v
