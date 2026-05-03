@@ -6,6 +6,26 @@ All functions return a dict that can be passed directly to
 
 from __future__ import annotations
 
+_NODE_LABELS: dict[str, str] = {
+    "preprocess": "理解输入内容",
+    "intent_parser": "分析任务意图",
+    "planner": "制定执行计划",
+    "doc_structure_gen": "生成文档大纲",
+    "doc_content_gen": "撰写文档内容",
+    "feishu_doc_write": "写入飞书文档",
+    "doc_section_editor": "修改文档章节",
+    "mod_intent_parser": "解析修改意图",
+    "ppt_structure_gen": "生成 PPT 大纲",
+    "ppt_content_gen": "生成幻灯片内容",
+    "feishu_ppt_write": "上传 PPT 至云盘",
+    "ppt_slide_editor": "修改指定幻灯片",
+    "scenario_composer": "分析生成场景",
+    "lego_orchestrator": "编排多场景任务",
+    "checkpoint_control": "执行检查点控制",
+    "clarify_resume": "处理用户补充信息",
+    "error_handler": "处理错误",
+}
+
 
 def clarify_card(questions: list[str]) -> dict[str, object]:
     """Card that shows clarifying questions and asks the user to reply in chat.
@@ -42,9 +62,10 @@ def plan_preview_card(
     """Card showing the execution plan with Confirm / Replan / Cancel buttons."""
     lines = []
     for i, step in enumerate(steps, 1):
-        node = step.get("node_name", "?")
+        node = str(step.get("node_name", "?"))
+        label = _NODE_LABELS.get(node, node)
         secs = step.get("estimated_seconds", 0)
-        lines.append(f"{i}. `{node}` (~{secs}s)")
+        lines.append(f"{i}. {label}（约 {secs} 秒）")
     steps_md = "\n".join(lines)
     return {
         "config": {"wide_screen_mode": True},
