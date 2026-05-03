@@ -2,23 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
 import structlog
+from pydantic import ValidationError
 
 from app.graph.nodes._decorator import graph_node
+from app.schemas.enums import TaskStatus
 from app.schemas.intent import ModificationIntent
 
 logger = structlog.get_logger(__name__)
 
-_FALLBACK = ModificationIntent(
-    target="document",
-    scope_type="full",
-    scope_identifier="全文",
-    modification_type="rewrite",
-    instruction="修改指令解析失败，请重新描述",
-)
 
 _DOC_KEYWORDS_RE = re.compile(r"文档|节|章节|正文")
 _PPT_KEYWORDS_RE = re.compile(r"PPT|ppt|幻灯片|页|slide|演示文稿")
@@ -114,9 +110,25 @@ async def mod_intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         mod_intent: ModificationIntent = await llm.structured(
             filled, ModificationIntent, tier="pro"
         )
+    except (ValidationError, json.JSONDecodeError) as exc:
+        # LLM returned unparseable or schema-invalid JSON — notify user, stop.
+        logger.warning("mod_intent_parse_invalid_schema", error=str(exc))
+        if message_id:
+            from app.services.progress_broadcaster import ProgressBroadcaster
+
+            ProgressBroadcaster(message_id=message_id, thread_id=message_id).emit_error(
+                "修改指令解析失败，请重新描述您的修改需求（例如：把第3页的标题改为…）"
+            )
+        return {"status": TaskStatus.failed, "error": "mod_intent_parse_invalid_schema"}
     except Exception:
         logger.exception("mod_intent_parser_failed")
-        mod_intent = _FALLBACK
+        if message_id:
+            from app.services.progress_broadcaster import ProgressBroadcaster
+
+            ProgressBroadcaster(message_id=message_id, thread_id=message_id).emit_error(
+                "修改意图解析出错，请稍后重试"
+            )
+        return {"status": TaskStatus.failed, "error": "mod_intent_parser_failed"}
 
     # Override target when pre-disambiguation is conclusive
     if force_target is not None:

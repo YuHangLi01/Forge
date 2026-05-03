@@ -111,6 +111,9 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     scope_identifier: str = getattr(mod_intent, "scope_identifier", "第1页")
     instruction: str = getattr(mod_intent, "instruction", "")
+    if not instruction.strip():
+        return {"error": "修改指令为空", "status": TaskStatus.failed}
+
     target_idx = _parse_slide_index(scope_identifier)
 
     slides: list[SlideSchema] = list(ppt_artifact.slides)

@@ -185,16 +185,18 @@ async def test_mod_intent_parser_returns_intent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mod_intent_parser_degrades_on_failure() -> None:
-    state = {"normalized_text": "改一改", "doc": _make_doc()}
+async def test_mod_intent_parser_returns_failed_on_llm_error() -> None:
+    """On LLM failure mod_intent_parser emits error and returns failed status (no fallback)."""
+    state = {"normalized_text": "改一改", "doc": _make_doc(), "message_id": ""}
 
     with patch(
         "app.services.llm_service.LLMService.structured",
-        new=AsyncMock(side_effect=RuntimeError()),
+        new=AsyncMock(side_effect=RuntimeError("network error")),
     ):
         result = await mod_intent_parser_node(state)
 
-    assert result["mod_intent"] is not None  # fallback set
+    assert result.get("status") == "failed"
+    assert "mod_intent" not in result
 
 
 # ── doc_section_editor (Scenario C) ──────────────────────────────────────────
