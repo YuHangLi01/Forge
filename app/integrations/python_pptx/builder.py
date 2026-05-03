@@ -152,12 +152,14 @@ class PptxBuilder:
             chart_data.add_series(s.name, tuple(s.values))  # type: ignore[no-untyped-call]
 
         xl_type = _CHART_TYPE_MAP.get(str(chart_schema.chart_type), XL_CHART_TYPE.COLUMN_CLUSTERED)
+        w = getattr(chart_schema, "width_inches", 9.0)
+        h = getattr(chart_schema, "height_inches", 4.5)
         graphic_frame = slide.shapes.add_chart(
             xl_type,
             Inches(0.5),
             Inches(3.0),
-            Inches(9.0),
-            Inches(4.5),
+            Inches(w),
+            Inches(h),
             chart_data,
         )
         if chart_schema.title:

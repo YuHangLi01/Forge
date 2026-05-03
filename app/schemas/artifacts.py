@@ -44,6 +44,8 @@ class ChartSchema(BaseModel):
     title: str = ""
     categories: list[str] = Field(default_factory=list)
     series: list[ChartSeries] = Field(default_factory=list)
+    width_inches: float = Field(default=9.0, gt=0)
+    height_inches: float = Field(default=4.5, gt=0)
 
     @field_validator("chart_type", mode="before")
     @classmethod
