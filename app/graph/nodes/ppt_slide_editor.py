@@ -22,6 +22,12 @@ _RESIZE_TRIGGER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Reposition: move chart to avoid overlap — no text edit, no chart data replacement needed
+_REPOSITION_RE = re.compile(
+    r"移[动至到]|调整.{0,6}位置|无重叠|不.{0,4}重叠|下方|下面|文字[以下]|挪[动到]|reposition|move",
+    re.IGNORECASE,
+)
+
 _CHART_MIN_W = 2.0
 _CHART_MIN_H = 1.0
 _CHART_MAX_W = 9.3
@@ -137,6 +143,18 @@ def _parse_slide_index(scope_identifier: str) -> int:
     return 0
 
 
+def _is_chart_layout_op(instruction: str) -> bool:
+    """True when instruction is a chart resize OR reposition.
+
+    For these ops: skip LLM text edit (prevents injected layout commentary)
+    and skip chart data extraction (prevents fabricated data replacing real chart).
+    Only chart geometry is changed; text and chart data are preserved as-is.
+    """
+    if _extract_resize_scale(instruction) is not None:
+        return True
+    return bool(_CHART_TRIGGER_RE.search(instruction) and _REPOSITION_RE.search(instruction))
+
+
 @graph_node("ppt_slide_editor")
 async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
     import redis.asyncio as aioredis
@@ -183,17 +201,16 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     llm = LLMService()
 
-    # Determine chart for the new slide:
-    # 1. Resize: scale existing chart dimensions (no LLM call for text either)
-    # 2. Add/replace chart: extract new chart data via LLM
-    # 3. Otherwise: preserve whatever chart was already on the slide
+    # Classify the instruction before any LLM calls:
+    #   layout_op = resize or reposition → preserve text + chart data, only adjust geometry
+    #   otherwise                        → text edit via LLM; chart data extraction if needed
     chart_schema: ChartSchema | None = target_slide.chart  # preserve by default
     resize_scale = _extract_resize_scale(instruction)
+    layout_op = _is_chart_layout_op(instruction)
 
-    # For pure chart resize, preserve original text — no LLM text edit needed.
-    # (Calling the LLM with a layout instruction causes it to inject unwanted
-    # commentary like "（已向下移动至合适位置）" into the slide bullets.)
-    if resize_scale is not None:
+    if layout_op:
+        # Preserve original text as-is.  Calling the LLM with a layout instruction
+        # causes it to inject unwanted notes ("已调整至文字下方无重叠区域") into bullets.
         updated: dict[str, Any] = {
             "heading": target_slide.title,
             "bullets": list(target_slide.bullets),
@@ -237,7 +254,7 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
             w=chart_schema.width_inches,
             h=chart_schema.height_inches,
         )
-    elif resize_scale is None and _CHART_TRIGGER_RE.search(instruction):
+    elif not layout_op and _CHART_TRIGGER_RE.search(instruction):
         try:
             chart_prompt = _CHART_EXTRACT_PROMPT.format(instruction=instruction)
             chart_raw: str = await llm.invoke(chart_prompt, tier="lite")
