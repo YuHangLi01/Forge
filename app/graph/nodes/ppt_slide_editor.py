@@ -26,15 +26,18 @@ _RESIZE_TRIGGER_RE = re.compile(
 # Bare "下方"/"下面" are intentionally excluded: they appear as spatial nouns in
 # "将图表下方的文字删除" (text op, not chart layout op) and would cause false positives.
 _REPOSITION_RE = re.compile(
-    r"移[动至到]|[至到]下[方面]|往下|向[上下左右]移|调整.{0,6}位置|无重叠|不.{0,4}重叠|挪[动到]"
-    r"|shift|reposition|move",
+    r"移[动至到]|[至到][上下左右]?[方面侧边]|往[上下左右]|向[上下左右]移"
+    r"|放[到至].{0,4}[侧方区域]|调整.{0,6}位置|无重叠|不.{0,4}重叠|挪[动到]"
+    r"|shift|reposition|move|below|above|place.{0,6}(?:chart|图)",
     re.IGNORECASE,
 )
 
 _CHART_MIN_W = 2.0
 _CHART_MIN_H = 1.0
 _CHART_MAX_W = 9.3
-_CHART_MAX_H = 4.3
+# _CHART_MAX_H is intentionally generous — builder applies the authoritative geometric
+# clamp (SLIDE_H - chart_top - 0.1) so this only blocks truly absurd values.
+_CHART_MAX_H = 6.5
 
 _CHART_EXTRACT_PROMPT = """\
 请从以下修改指令中提取图表数据，输出 JSON。
@@ -54,7 +57,7 @@ _CHART_EXTRACT_PROMPT = """\
 规则：
 - chart_type 只能是 bar / line / pie
 - categories 和 values 长度必须相同
-- 如果指令中没有明确数据，编造合理的示例数据
+- 如果指令中没有明确的图表数据，series 填 []，categories 填 []
 - 只输出 JSON，不加任何解释
 """
 
@@ -270,15 +273,20 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
                 lines = stripped_chart.split("\n")
                 stripped_chart = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
             chart_dict: dict[str, Any] = json.loads(stripped_chart)
-            chart_schema = ChartSchema(
-                chart_type=chart_dict.get("chart_type", "bar"),
-                title=chart_dict.get("title", ""),
-                categories=chart_dict.get("categories", []),
-                series=[
-                    ChartSeries(name=s["name"], values=s["values"])
-                    for s in chart_dict.get("series", [])
-                ],
-            )
+            extracted_series = chart_dict.get("series") or []
+            if not extracted_series:
+                # Instruction had no explicit chart data (e.g. "更新数据" with no values).
+                # Preserve existing chart rather than replacing with fabricated data.
+                logger.info("chart_extract_no_data_preserve_existing", slide_index=target_idx)
+            else:
+                chart_schema = ChartSchema(
+                    chart_type=chart_dict.get("chart_type", "bar"),
+                    title=chart_dict.get("title", ""),
+                    categories=chart_dict.get("categories", []),
+                    series=[
+                        ChartSeries(name=s["name"], values=s["values"]) for s in extracted_series
+                    ],
+                )
         except Exception:
             logger.exception("ppt_slide_editor_chart_extract_failed", slide_index=target_idx)
 

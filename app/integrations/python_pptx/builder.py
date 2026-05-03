@@ -156,15 +156,18 @@ class PptxBuilder:
         h = getattr(chart_schema, "height_inches", 4.5)
 
         # Place chart below bullet text to avoid overlap.
-        # Title placeholder ~0.3"–1.3"; body text starts at ~1.3", each bullet ~0.38".
-        # With no bullets the chart sits at 2.0"; more bullets push it further down.
+        # Title placeholder ends ~1.3"; standard content placeholder starts ~1.75".
+        # Each bullet at 18pt ≈ 0.38" high.  Cap chart_top at 4.5" (60% of 7.5" slide
+        # height) so the chart always has at least ~3" of vertical room.
         SLIDE_H = 7.5
         if n_bullets > 0:
-            text_bottom = 1.3 + n_bullets * 0.38 + 0.2
+            if n_bullets > 6:
+                logger.warning("chart_slide_many_bullets", n_bullets=n_bullets)
+            text_bottom = 1.75 + n_bullets * 0.38 + 0.15
             chart_top = max(2.0, min(text_bottom, 4.5))
         else:
             chart_top = 2.0
-        # Clamp height so chart doesn't overflow the slide
+        # Single authoritative height clamp: requested h vs. remaining slide space.
         h = min(h, SLIDE_H - chart_top - 0.1)
 
         graphic_frame = slide.shapes.add_chart(
