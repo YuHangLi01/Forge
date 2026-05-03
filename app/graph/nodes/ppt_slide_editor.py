@@ -17,6 +17,16 @@ _CHART_TRIGGER_RE = re.compile(
     re.IGNORECASE,
 )
 
+_RESIZE_TRIGGER_RE = re.compile(
+    r"改小|缩小|变小|小一[点些]?|改大|放大|变大|大一[点些]?|resize|shrink|enlarge",
+    re.IGNORECASE,
+)
+
+_CHART_MIN_W = 2.0
+_CHART_MIN_H = 1.0
+_CHART_MAX_W = 9.3
+_CHART_MAX_H = 4.3
+
 _CHART_EXTRACT_PROMPT = """\
 请从以下修改指令中提取图表数据，输出 JSON。
 
@@ -74,6 +84,46 @@ _SLIDE_EDIT_PROMPT = """\
 ## 输出格式（JSON）
 {{"heading": "修改后标题", "bullets": ["要点1", "要点2"], "speaker_notes": "备注"}}
 """
+
+
+def _extract_resize_scale(instruction: str) -> float | None:
+    """Return a scale factor if instruction is a chart-resize request, else None.
+
+    Examples: "改小一点" → 0.75, "缩小30%" → 0.70, "放大到150%" → 1.50
+    """
+    if not _RESIZE_TRIGGER_RE.search(instruction):
+        return None
+
+    lower = instruction.lower()
+    is_shrink = any(k in lower for k in ("小", "缩", "shrink"))
+
+    # "缩小到N%" / "放大到N%"
+    m = re.search(r"(?:缩小到|放大到)\s*(\d+)\s*%", lower)
+    if m:
+        return int(m.group(1)) / 100
+
+    # "缩小N%" / "放大N%"
+    m = re.search(r"缩小\s*(\d+)\s*%", lower)
+    if m:
+        return 1.0 - int(m.group(1)) / 100
+    m = re.search(r"放大\s*(\d+)\s*%", lower)
+    if m:
+        return 1.0 + int(m.group(1)) / 100
+
+    # "放大一倍"
+    if "一倍" in lower:
+        return 0.5 if is_shrink else 2.0
+
+    # "很多" / "大幅" / "明显" → aggressive
+    if any(k in lower for k in ("很多", "大幅", "明显", "非常")):
+        return 0.5 if is_shrink else 1.6
+
+    # "一点" / "一些" / "稍" / "略" → gentle
+    if any(k in lower for k in ("一点", "一些", "稍微", "稍", "略")):
+        return 0.75 if is_shrink else 1.25
+
+    # default: moderate
+    return 0.7 if is_shrink else 1.3
 
 
 def _parse_slide_index(scope_identifier: str) -> int:
@@ -151,8 +201,33 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         logger.exception("ppt_slide_editor_llm_failed", slide_index=target_idx)
         return {"error": "幻灯片内容生成失败，请重试", "status": TaskStatus.failed}
 
-    chart_schema: ChartSchema | None = None
-    if _CHART_TRIGGER_RE.search(instruction):
+    # Determine chart for the new slide:
+    # 1. Resize: scale existing chart dimensions (no LLM needed for chart data)
+    # 2. Add/replace chart: extract new chart data via LLM
+    # 3. Otherwise: preserve whatever chart was already on the slide
+    chart_schema: ChartSchema | None = target_slide.chart  # preserve by default
+    resize_scale = _extract_resize_scale(instruction)
+
+    if resize_scale is not None and target_slide.chart is not None:
+        old = target_slide.chart
+        new_w = max(_CHART_MIN_W, min(old.width_inches * resize_scale, _CHART_MAX_W))
+        new_h = max(_CHART_MIN_H, min(old.height_inches * resize_scale, _CHART_MAX_H))
+        chart_schema = ChartSchema(
+            chart_type=old.chart_type,
+            title=old.title,
+            categories=list(old.categories),
+            series=list(old.series),
+            width_inches=round(new_w, 2),
+            height_inches=round(new_h, 2),
+        )
+        logger.info(
+            "ppt_chart_resized",
+            slide_index=target_idx,
+            scale=resize_scale,
+            w=chart_schema.width_inches,
+            h=chart_schema.height_inches,
+        )
+    elif resize_scale is None and _CHART_TRIGGER_RE.search(instruction):
         try:
             chart_prompt = _CHART_EXTRACT_PROMPT.format(instruction=instruction)
             chart_raw: str = await llm.invoke(chart_prompt, tier="lite")
