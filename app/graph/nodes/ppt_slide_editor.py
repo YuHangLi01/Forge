@@ -22,9 +22,12 @@ _RESIZE_TRIGGER_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Reposition: move chart to avoid overlap — no text edit, no chart data replacement needed
+# Reposition: move chart to avoid overlap — no text edit, no chart data replacement needed.
+# Bare "下方"/"下面" are intentionally excluded: they appear as spatial nouns in
+# "将图表下方的文字删除" (text op, not chart layout op) and would cause false positives.
 _REPOSITION_RE = re.compile(
-    r"移[动至到]|调整.{0,6}位置|无重叠|不.{0,4}重叠|下方|下面|文字[以下]|挪[动到]|reposition|move",
+    r"移[动至到]|[至到]下[方面]|往下|向[上下左右]移|调整.{0,6}位置|无重叠|不.{0,4}重叠|挪[动到]"
+    r"|shift|reposition|move",
     re.IGNORECASE,
 )
 
@@ -149,10 +152,14 @@ def _is_chart_layout_op(instruction: str) -> bool:
     For these ops: skip LLM text edit (prevents injected layout commentary)
     and skip chart data extraction (prevents fabricated data replacing real chart).
     Only chart geometry is changed; text and chart data are preserved as-is.
+
+    IMPORTANT: both branches require a chart trigger word.  Without it, instructions
+    like "缩小字体" or "放大标题" would also match resize keywords, silently no-oping.
     """
-    if _extract_resize_scale(instruction) is not None:
+    has_chart = bool(_CHART_TRIGGER_RE.search(instruction))
+    if has_chart and _extract_resize_scale(instruction) is not None:
         return True
-    return bool(_CHART_TRIGGER_RE.search(instruction) and _REPOSITION_RE.search(instruction))
+    return bool(has_chart and _REPOSITION_RE.search(instruction))
 
 
 @graph_node("ppt_slide_editor")
