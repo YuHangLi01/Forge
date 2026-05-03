@@ -310,6 +310,10 @@ async def _handle_mod_target(value: dict[str, Any]) -> dict[str, Any]:
         logger.warning("mod_target_missing_thread_id")
         return {"status": "invalid"}
 
+    if target == "both":
+        await _reply_text(thread_id, "暂不支持同时修改文档和PPT，请分别发送修改指令。")
+        return {"status": "unsupported"}
+
     from app.graph import get_or_init_graph
     from app.schemas.intent import ModificationIntent
 

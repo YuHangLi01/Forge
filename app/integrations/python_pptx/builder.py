@@ -12,6 +12,7 @@ import contextlib
 import io
 from typing import Any
 
+import structlog
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
@@ -20,6 +21,8 @@ from pptx.util import Inches, Pt
 
 from app.schemas.artifacts import SlideSchema
 from app.schemas.enums import SlideLayout
+
+logger = structlog.get_logger(__name__)
 
 _TITLE_FONT_PT = 32
 _BULLET_FONT_PT = 18
@@ -140,6 +143,9 @@ class PptxBuilder:
             self._add_chart_to_slide(slide, schema.chart)
 
     def _add_chart_to_slide(self, slide: Any, chart_schema: Any) -> None:
+        if not chart_schema.series:
+            logger.warning("chart_skipped_no_series", title=chart_schema.title)
+            return
         chart_data = CategoryChartData()  # type: ignore[no-untyped-call]
         chart_data.categories = chart_schema.categories or ["A", "B", "C"]
         for s in chart_schema.series:

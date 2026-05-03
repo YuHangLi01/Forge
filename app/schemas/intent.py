@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.enums import ModificationType, OutputFormat, ScopeType, TaskType
 
+_VALID_SCOPE_TYPES: frozenset[str] = frozenset(e.value for e in ScopeType)
+
 # LLM 有时会输出不在枚举里的近义词，在 Pydantic 校验前归一化
 _SCOPE_TYPE_ALIASES: dict[str, str] = {
     "page": "specific_slide",
@@ -59,13 +61,44 @@ class ModificationIntent(BaseModel):
     @field_validator("scope_type", mode="before")
     @classmethod
     def normalize_scope_type(cls, v: object) -> object:
-        if isinstance(v, str):
-            return _SCOPE_TYPE_ALIASES.get(v.lower(), v)
-        return v
+        if not isinstance(v, str):
+            return v
+        normalized = _SCOPE_TYPE_ALIASES.get(v.lower(), v.lower())
+        if normalized not in _VALID_SCOPE_TYPES:
+            lower = v.lower()
+            if any(kw in lower for kw in ("全文", "整体", "全部", "所有", "整个")):
+                return "full"
+            if any(kw in lower for kw in ("页", "幻灯片", "slide")):
+                return "specific_slide"
+            if any(kw in lower for kw in ("节", "章", "段落", "部分")):
+                return "specific_section"
+        return normalized
 
     @field_validator("modification_type", mode="before")
     @classmethod
     def normalize_modification_type(cls, v: object) -> object:
-        if isinstance(v, str):
-            return _MODIFICATION_TYPE_ALIASES.get(v.lower(), v)
-        return v
+        if not isinstance(v, str):
+            return v
+        normalized = _MODIFICATION_TYPE_ALIASES.get(v.lower(), v)
+        if normalized == v:
+            lower = v.lower()
+            _reformat_kws = (
+                "格式",
+                "排版",
+                "尺寸",
+                "样式",
+                "字体",
+                "颜色",
+                "布局",
+                "对齐",
+                "缩小",
+                "放大",
+                "调整",
+            )
+            if any(kw in lower for kw in _reformat_kws):
+                return "reformat"
+            if any(kw in lower for kw in ("删除", "移除", "清除", "去掉", "取消")):
+                return "delete"
+            if any(kw in lower for kw in ("增加", "添加", "插入", "新增", "加上", "补充")):
+                return "append"
+        return normalized

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.enums import ChartType, SlideLayout
 
@@ -28,6 +28,15 @@ class ChartSeries(BaseModel):
     values: list[float]
 
 
+_CHART_TYPE_ALIASES: dict[str, str] = {
+    "column": "bar",
+    "histogram": "bar",
+    "doughnut": "pie",
+    "donut": "pie",
+    "area": "line",
+}
+
+
 class ChartSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -35,6 +44,11 @@ class ChartSchema(BaseModel):
     title: str = ""
     categories: list[str] = Field(default_factory=list)
     series: list[ChartSeries] = Field(default_factory=list)
+
+    @field_validator("chart_type", mode="before")
+    @classmethod
+    def coerce_chart_type(cls, v: object) -> object:
+        return _CHART_TYPE_ALIASES.get(str(v).lower(), v)
 
 
 class SlideSchema(BaseModel):

@@ -22,6 +22,7 @@ class LLMService:
         llm = get_llm(tier)
         messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=prompt)]
 
+        response = None
         delay = _RATE_LIMIT_BASE_DELAY
         for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
             try:
@@ -41,6 +42,9 @@ class LLMService:
                 )
                 await asyncio.sleep(delay)
                 delay *= 2
+
+        if response is None:
+            raise RuntimeError("LLM invoke completed without a response")
 
         # Reasoning models return content as a list; extract text part.
         raw = response.content

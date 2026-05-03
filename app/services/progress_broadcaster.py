@@ -107,6 +107,8 @@ class ProgressBroadcaster:
         card update.  Running in a daemon thread gives _emit_async its own loop
         via asyncio.run(), which is independent of the calling loop's lifecycle.
         """
+        if not self.message_id:
+            return
         card = dict(self._current_card)  # snapshot before any mutation
         threading.Thread(
             target=asyncio.run,
@@ -166,18 +168,24 @@ class ProgressBroadcaster:
         await adapter.update_card(card_message_id, card)
 
     def _send_now(self, card: dict[str, Any]) -> None:
-        """Reply to user's original message with a brand-new card (for emit_* calls)."""
-        try:
-            from app.integrations.feishu.adapter import FeishuAdapter
+        """Reply to user's original message with a brand-new card (for emit_* calls).
 
-            adapter = FeishuAdapter()
+        Uses the same daemon-thread pattern as _emit() so the send is not subject
+        to the calling event loop's lifecycle (critical in Celery workers).
+        """
+        if not self.message_id:
+            return
+        message_id = self.message_id
+
+        def _run() -> None:
             try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(adapter.reply_card(self.message_id, card))
-            except RuntimeError:
-                asyncio.run(adapter.reply_card(self.message_id, card))
-        except Exception:
-            logger.exception("progress_broadcaster_send_failed", message_id=self.message_id)
+                from app.integrations.feishu.adapter import FeishuAdapter
+
+                asyncio.run(FeishuAdapter().reply_card(message_id, card))
+            except Exception:
+                logger.exception("progress_broadcaster_send_failed", message_id=message_id)
+
+        threading.Thread(target=_run, daemon=True).start()
 
     @staticmethod
     def _build_progress_card(text: str) -> dict[str, Any]:
