@@ -4,6 +4,17 @@ from app.schemas.enums import ModificationType, OutputFormat, ScopeType, TaskTyp
 
 _VALID_SCOPE_TYPES: frozenset[str] = frozenset(e.value for e in ScopeType)
 
+_TARGET_ALIASES: dict[str, str] = {
+    "doc": "document",
+    "docs": "document",
+    "文档": "document",
+    "ppt": "presentation",
+    "slides": "presentation",
+    "slide": "presentation",
+    "演示": "presentation",
+    "演示文稿": "presentation",
+}
+
 # LLM 有时会输出不在枚举里的近义词，在 Pydantic 校验前归一化
 _SCOPE_TYPE_ALIASES: dict[str, str] = {
     "page": "specific_slide",
@@ -74,6 +85,18 @@ class ModificationIntent(BaseModel):
     modification_type: ModificationType
     instruction: str = Field(..., description="具体修改指令")
     ambiguity_high: bool = Field(default=False, description="是否需要用户确认修改对象")
+
+    @field_validator("target", mode="before")
+    @classmethod
+    def normalize_target(cls, v: object) -> object:
+        if not isinstance(v, str):
+            return v
+        mapped = _TARGET_ALIASES.get(v.lower())
+        if mapped:
+            return mapped
+        if not v.strip():
+            return "document"  # force_target overrides this; prevents ValidationError
+        return v
 
     @field_validator("scope_type", mode="before")
     @classmethod

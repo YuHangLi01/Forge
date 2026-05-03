@@ -181,32 +181,42 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
     target_idx = max(0, min(target_idx, len(slides) - 1))
     target_slide = slides[target_idx]
 
-    bullets_text = "\n".join(f"- {b}" for b in target_slide.bullets) or "（无要点）"
-    prompt = _SLIDE_EDIT_PROMPT.format(
-        heading=target_slide.title,
-        bullets=bullets_text,
-        notes=target_slide.speaker_notes or "",
-        instruction=instruction,
-    )
-
     llm = LLMService()
-    try:
-        raw: str = await llm.invoke(prompt, tier="lite")
-        stripped = raw.strip()
-        if stripped.startswith("```"):
-            lines = stripped.split("\n")
-            stripped = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-        updated: dict[str, Any] = json.loads(stripped)
-    except Exception:
-        logger.exception("ppt_slide_editor_llm_failed", slide_index=target_idx)
-        return {"error": "幻灯片内容生成失败，请重试", "status": TaskStatus.failed}
 
     # Determine chart for the new slide:
-    # 1. Resize: scale existing chart dimensions (no LLM needed for chart data)
+    # 1. Resize: scale existing chart dimensions (no LLM call for text either)
     # 2. Add/replace chart: extract new chart data via LLM
     # 3. Otherwise: preserve whatever chart was already on the slide
     chart_schema: ChartSchema | None = target_slide.chart  # preserve by default
     resize_scale = _extract_resize_scale(instruction)
+
+    # For pure chart resize, preserve original text — no LLM text edit needed.
+    # (Calling the LLM with a layout instruction causes it to inject unwanted
+    # commentary like "（已向下移动至合适位置）" into the slide bullets.)
+    if resize_scale is not None:
+        updated: dict[str, Any] = {
+            "heading": target_slide.title,
+            "bullets": list(target_slide.bullets),
+            "speaker_notes": target_slide.speaker_notes or "",
+        }
+    else:
+        bullets_text = "\n".join(f"- {b}" for b in target_slide.bullets) or "（无要点）"
+        prompt = _SLIDE_EDIT_PROMPT.format(
+            heading=target_slide.title,
+            bullets=bullets_text,
+            notes=target_slide.speaker_notes or "",
+            instruction=instruction,
+        )
+        try:
+            raw: str = await llm.invoke(prompt, tier="lite")
+            stripped = raw.strip()
+            if stripped.startswith("```"):
+                lines = stripped.split("\n")
+                stripped = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+            updated = json.loads(stripped)
+        except Exception:
+            logger.exception("ppt_slide_editor_llm_failed", slide_index=target_idx)
+            return {"error": "幻灯片内容生成失败，请重试", "status": TaskStatus.failed}
 
     if resize_scale is not None and target_slide.chart is not None:
         old = target_slide.chart

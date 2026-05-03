@@ -19,7 +19,9 @@ PROMPT_V1 = PromptVersion(
 {modification_history}
 
 ## 输出字段说明
-- target: 修改对象类型，固定填 "document"
+- target: 修改对象类型（必须从以下值中选一个）
+  - "document": 修改飞书文档
+  - "presentation": 修改 PPT
 - scope_type: 修改范围类型（必须从以下值中选一个）
   - "full": 整篇文档/所有幻灯片
   - "specific_section": 特定章节（仅文档）
