@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from app.schemas.enums import OutputFormat, TaskType
@@ -90,7 +92,8 @@ async def test_lego_orchestrator_node_writes_plan() -> None:
         "pending_user_action": None,
     }
 
-    result = await lego_orchestrator_node(state)
+    with patch("app.graph.nodes.lego_orchestrator.ProgressBroadcaster"):
+        result = await lego_orchestrator_node(state)
 
     assert "plan" in result
     plan: PlanSchema = result["plan"]
