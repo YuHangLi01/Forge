@@ -69,8 +69,23 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
 
         control = detect_control_intent(msg.text)
         if control in ("pause", "resume", "cancel"):
-            graph_ctrl = await get_or_init_graph()
-            return await _handle_control_intent(msg, control, graph_ctrl)
+            # Only enter the control path when a task is actually running.
+            # Without this guard, common words like "继续" appearing in a normal
+            # instruction (e.g. "继续修改第5页") silently eat the message as a
+            # resume command and never start a new graph run.
+            try:
+                import redis.asyncio as aioredis
+
+                from app.config import get_settings as _gs_ctrl
+
+                async with aioredis.from_url(_gs_ctrl().REDIS_URL) as _r_ctrl:  # type: ignore[no-untyped-call]
+                    _has_active = bool(await _r_ctrl.get(f"active_task:{msg.chat_id}"))
+            except Exception:
+                _has_active = False
+
+            if _has_active:
+                graph_ctrl = await get_or_init_graph()
+                return await _handle_control_intent(msg, control, graph_ctrl)
     # ────────────────────────────────────────────────────────────────────────
 
     # Message-level idempotency guard.

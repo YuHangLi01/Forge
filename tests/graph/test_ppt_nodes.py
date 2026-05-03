@@ -280,3 +280,158 @@ class TestPptContentGenNode:
         assert "ppt_slides" in result
         slide = result["ppt_slides"][0]
         assert "slide_index" in slide
+
+
+# ── _extract_resize_scale ─────────────────────────────────────────────────────
+
+
+class TestExtractResizeScale:
+    def setup_method(self) -> None:
+        from app.graph.nodes.ppt_slide_editor import _extract_resize_scale
+
+        self.fn = _extract_resize_scale
+
+    def test_no_resize_keyword_returns_none(self) -> None:
+        assert self.fn("把标题改成蓝色") is None
+        assert self.fn("替换第3页文字") is None
+        assert self.fn("") is None
+
+    def test_gentle_shrink_yi_dian(self) -> None:
+        assert self.fn("改小一点") == pytest.approx(0.75)
+        assert self.fn("缩小一点") == pytest.approx(0.75)
+        assert self.fn("缩小一些") == pytest.approx(0.75)
+        assert self.fn("稍微缩小") == pytest.approx(0.75)
+
+    def test_gentle_enlarge_yi_dian(self) -> None:
+        assert self.fn("改大一点") == pytest.approx(1.25)
+        assert self.fn("放大一点") == pytest.approx(1.25)
+        assert self.fn("放大一些") == pytest.approx(1.25)
+
+    def test_aggressive_shrink(self) -> None:
+        assert self.fn("缩小很多") == pytest.approx(0.5)
+        assert self.fn("大幅缩小") == pytest.approx(0.5)
+
+    def test_aggressive_enlarge(self) -> None:
+        assert self.fn("放大很多") == pytest.approx(1.6)
+        assert self.fn("明显放大") == pytest.approx(1.6)
+
+    def test_explicit_percent_shrink(self) -> None:
+        assert self.fn("缩小30%") == pytest.approx(0.70)
+        assert self.fn("缩小50%") == pytest.approx(0.50)
+
+    def test_explicit_percent_enlarge(self) -> None:
+        assert self.fn("放大20%") == pytest.approx(1.20)
+        assert self.fn("放大50%") == pytest.approx(1.50)
+
+    def test_scale_to_percent(self) -> None:
+        assert self.fn("缩小到60%") == pytest.approx(0.60)
+        assert self.fn("放大到150%") == pytest.approx(1.50)
+
+    def test_yi_bei(self) -> None:
+        assert self.fn("放大一倍") == pytest.approx(2.0)
+
+    def test_default_moderate_shrink(self) -> None:
+        assert self.fn("缩小") == pytest.approx(0.7)
+
+    def test_default_moderate_enlarge(self) -> None:
+        assert self.fn("放大") == pytest.approx(1.3)
+
+    def test_english_shrink(self) -> None:
+        assert self.fn("shrink the chart") == pytest.approx(0.7)
+
+    def test_english_enlarge(self) -> None:
+        assert self.fn("enlarge the chart") == pytest.approx(1.3)
+
+
+# ── _parse_slide_index ────────────────────────────────────────────────────────
+
+
+class TestParseSlideIndex:
+    def setup_method(self) -> None:
+        from app.graph.nodes.ppt_slide_editor import _parse_slide_index
+
+        self.fn = _parse_slide_index
+
+    def test_arabic_digit(self) -> None:
+        assert self.fn("第1页") == 0
+        assert self.fn("第5页") == 4
+        assert self.fn("第10页") == 9
+
+    def test_chinese_digit(self) -> None:
+        assert self.fn("第三页") == 2
+        assert self.fn("第五页") == 4
+
+    def test_no_match_returns_zero(self) -> None:
+        assert self.fn("全部幻灯片") == 0
+        assert self.fn("") == 0
+
+
+# ── ChartSchema width/height defaults ────────────────────────────────────────
+
+
+class TestChartSchemaSize:
+    def test_defaults(self) -> None:
+        from app.schemas.artifacts import ChartSchema
+
+        c = ChartSchema()
+        assert c.width_inches == pytest.approx(9.0)
+        assert c.height_inches == pytest.approx(4.5)
+
+    def test_custom_size(self) -> None:
+        from app.schemas.artifacts import ChartSchema
+
+        c = ChartSchema(width_inches=6.0, height_inches=3.0)
+        assert c.width_inches == pytest.approx(6.0)
+        assert c.height_inches == pytest.approx(3.0)
+
+    def test_coerce_column_to_bar(self) -> None:
+        from app.schemas.artifacts import ChartSchema
+        from app.schemas.enums import ChartType
+
+        c = ChartSchema(chart_type="column")  # type: ignore[arg-type]
+        assert c.chart_type == ChartType.bar
+
+
+# ── normalize_modification_type new aliases ──────────────────────────────────
+
+
+class TestModificationTypeAliases:
+    def test_resize_element_maps_to_reformat(self) -> None:
+        from app.schemas.enums import ModificationType
+        from app.schemas.intent import ModificationIntent
+
+        m = ModificationIntent(
+            target="presentation",
+            scope_type="specific_slide",
+            scope_identifier="第5页",
+            modification_type="resize_element",  # type: ignore[arg-type]
+            instruction="缩小图表",
+        )
+        assert m.modification_type == ModificationType.reformat
+
+    def test_shrink_maps_to_reformat(self) -> None:
+        from app.schemas.enums import ModificationType
+        from app.schemas.intent import ModificationIntent
+
+        m = ModificationIntent(
+            target="presentation",
+            scope_type="specific_slide",
+            scope_identifier="第5页",
+            modification_type="shrink",  # type: ignore[arg-type]
+            instruction="缩小图表",
+        )
+        assert m.modification_type == ModificationType.reformat
+
+    def test_unknown_value_raises_validation_error(self) -> None:
+        from pydantic import ValidationError
+
+        from app.schemas.intent import ModificationIntent
+
+        with pytest.raises(ValidationError):
+            ModificationIntent(
+                target="presentation",
+                scope_type="specific_slide",
+                scope_identifier="第5页",
+                modification_type="some_unknown_type",  # type: ignore[arg-type]
+                instruction="test",
+            )
