@@ -22,10 +22,22 @@ _RESIZE_TRIGGER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Reposition: move chart to avoid overlap — no text edit, no chart data replacement needed.
+# Bare "下方"/"下面" are intentionally excluded: they appear as spatial nouns in
+# "将图表下方的文字删除" (text op, not chart layout op) and would cause false positives.
+_REPOSITION_RE = re.compile(
+    r"移[动至到]|[至到][上下左右]?[方面侧边]|往[上下左右]|向[上下左右]移"
+    r"|放[到至].{0,4}[侧方区域]|调整.{0,6}位置|无重叠|不.{0,4}重叠|挪[动到]"
+    r"|shift|reposition|move|below|above|place.{0,6}(?:chart|图)",
+    re.IGNORECASE,
+)
+
 _CHART_MIN_W = 2.0
 _CHART_MIN_H = 1.0
 _CHART_MAX_W = 9.3
-_CHART_MAX_H = 4.3
+# _CHART_MAX_H is intentionally generous — builder applies the authoritative geometric
+# clamp (SLIDE_H - chart_top - 0.1) so this only blocks truly absurd values.
+_CHART_MAX_H = 6.5
 
 _CHART_EXTRACT_PROMPT = """\
 请从以下修改指令中提取图表数据，输出 JSON。
@@ -45,7 +57,7 @@ _CHART_EXTRACT_PROMPT = """\
 规则：
 - chart_type 只能是 bar / line / pie
 - categories 和 values 长度必须相同
-- 如果指令中没有明确数据，编造合理的示例数据
+- 如果指令中没有明确的图表数据，series 填 []，categories 填 []
 - 只输出 JSON，不加任何解释
 """
 
@@ -137,6 +149,22 @@ def _parse_slide_index(scope_identifier: str) -> int:
     return 0
 
 
+def _is_chart_layout_op(instruction: str) -> bool:
+    """True when instruction is a chart resize OR reposition.
+
+    For these ops: skip LLM text edit (prevents injected layout commentary)
+    and skip chart data extraction (prevents fabricated data replacing real chart).
+    Only chart geometry is changed; text and chart data are preserved as-is.
+
+    IMPORTANT: both branches require a chart trigger word.  Without it, instructions
+    like "缩小字体" or "放大标题" would also match resize keywords, silently no-oping.
+    """
+    has_chart = bool(_CHART_TRIGGER_RE.search(instruction))
+    if has_chart and _extract_resize_scale(instruction) is not None:
+        return True
+    return bool(has_chart and _REPOSITION_RE.search(instruction))
+
+
 @graph_node("ppt_slide_editor")
 async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
     import redis.asyncio as aioredis
@@ -183,17 +211,16 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     llm = LLMService()
 
-    # Determine chart for the new slide:
-    # 1. Resize: scale existing chart dimensions (no LLM call for text either)
-    # 2. Add/replace chart: extract new chart data via LLM
-    # 3. Otherwise: preserve whatever chart was already on the slide
+    # Classify the instruction before any LLM calls:
+    #   layout_op = resize or reposition → preserve text + chart data, only adjust geometry
+    #   otherwise                        → text edit via LLM; chart data extraction if needed
     chart_schema: ChartSchema | None = target_slide.chart  # preserve by default
     resize_scale = _extract_resize_scale(instruction)
+    layout_op = _is_chart_layout_op(instruction)
 
-    # For pure chart resize, preserve original text — no LLM text edit needed.
-    # (Calling the LLM with a layout instruction causes it to inject unwanted
-    # commentary like "（已向下移动至合适位置）" into the slide bullets.)
-    if resize_scale is not None:
+    if layout_op:
+        # Preserve original text as-is.  Calling the LLM with a layout instruction
+        # causes it to inject unwanted notes ("已调整至文字下方无重叠区域") into bullets.
         updated: dict[str, Any] = {
             "heading": target_slide.title,
             "bullets": list(target_slide.bullets),
@@ -237,7 +264,7 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
             w=chart_schema.width_inches,
             h=chart_schema.height_inches,
         )
-    elif resize_scale is None and _CHART_TRIGGER_RE.search(instruction):
+    elif not layout_op and _CHART_TRIGGER_RE.search(instruction):
         try:
             chart_prompt = _CHART_EXTRACT_PROMPT.format(instruction=instruction)
             chart_raw: str = await llm.invoke(chart_prompt, tier="lite")
@@ -246,15 +273,20 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
                 lines = stripped_chart.split("\n")
                 stripped_chart = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
             chart_dict: dict[str, Any] = json.loads(stripped_chart)
-            chart_schema = ChartSchema(
-                chart_type=chart_dict.get("chart_type", "bar"),
-                title=chart_dict.get("title", ""),
-                categories=chart_dict.get("categories", []),
-                series=[
-                    ChartSeries(name=s["name"], values=s["values"])
-                    for s in chart_dict.get("series", [])
-                ],
-            )
+            extracted_series = chart_dict.get("series") or []
+            if not extracted_series:
+                # Instruction had no explicit chart data (e.g. "更新数据" with no values).
+                # Preserve existing chart rather than replacing with fabricated data.
+                logger.info("chart_extract_no_data_preserve_existing", slide_index=target_idx)
+            else:
+                chart_schema = ChartSchema(
+                    chart_type=chart_dict.get("chart_type", "bar"),
+                    title=chart_dict.get("title", ""),
+                    categories=chart_dict.get("categories", []),
+                    series=[
+                        ChartSeries(name=s["name"], values=s["values"]) for s in extracted_series
+                    ],
+                )
         except Exception:
             logger.exception("ppt_slide_editor_chart_extract_failed", slide_index=target_idx)
 

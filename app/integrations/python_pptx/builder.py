@@ -140,9 +140,9 @@ class PptxBuilder:
             slide.notes_slide.notes_text_frame.text = schema.speaker_notes
 
         if schema.chart is not None:
-            self._add_chart_to_slide(slide, schema.chart)
+            self._add_chart_to_slide(slide, schema.chart, n_bullets=len(schema.bullets))
 
-    def _add_chart_to_slide(self, slide: Any, chart_schema: Any) -> None:
+    def _add_chart_to_slide(self, slide: Any, chart_schema: Any, n_bullets: int = 0) -> None:
         if not chart_schema.series:
             logger.warning("chart_skipped_no_series", title=chart_schema.title)
             return
@@ -154,10 +154,26 @@ class PptxBuilder:
         xl_type = _CHART_TYPE_MAP.get(str(chart_schema.chart_type), XL_CHART_TYPE.COLUMN_CLUSTERED)
         w = getattr(chart_schema, "width_inches", 9.0)
         h = getattr(chart_schema, "height_inches", 4.5)
+
+        # Place chart below bullet text to avoid overlap.
+        # Title placeholder ends ~1.3"; standard content placeholder starts ~1.75".
+        # Each bullet at 18pt ≈ 0.38" high.  Cap chart_top at 4.5" (60% of 7.5" slide
+        # height) so the chart always has at least ~3" of vertical room.
+        SLIDE_H = 7.5
+        if n_bullets > 0:
+            if n_bullets > 6:
+                logger.warning("chart_slide_many_bullets", n_bullets=n_bullets)
+            text_bottom = 1.75 + n_bullets * 0.38 + 0.15
+            chart_top = max(2.0, min(text_bottom, 4.5))
+        else:
+            chart_top = 2.0
+        # Single authoritative height clamp: requested h vs. remaining slide space.
+        h = min(h, SLIDE_H - chart_top - 0.1)
+
         graphic_frame = slide.shapes.add_chart(
             xl_type,
             Inches(0.5),
-            Inches(3.0),
+            Inches(chart_top),
             Inches(w),
             Inches(h),
             chart_data,

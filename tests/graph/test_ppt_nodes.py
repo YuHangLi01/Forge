@@ -435,3 +435,63 @@ class TestModificationTypeAliases:
                 modification_type="some_unknown_type",  # type: ignore[arg-type]
                 instruction="test",
             )
+
+
+# ── _is_chart_layout_op ───────────────────────────────────────────────────────
+
+
+class TestIsChartLayoutOp:
+    def setup_method(self) -> None:
+        from app.graph.nodes.ppt_slide_editor import _is_chart_layout_op
+
+        self.fn = _is_chart_layout_op
+
+    # ── should be True (chart + resize) ──────────────────────────────────────
+    def test_chart_resize_shrink(self) -> None:
+        assert self.fn("缩小折线图") is True
+
+    def test_chart_resize_enlarge(self) -> None:
+        assert self.fn("放大图表") is True
+
+    def test_chart_resize_english(self) -> None:
+        assert self.fn("shrink the chart") is True
+
+    # ── should be True (chart + reposition) ──────────────────────────────────
+    def test_chart_reposition_no_overlap(self) -> None:
+        assert self.fn("将折线图调整至无重叠区域") is True
+
+    def test_chart_reposition_move(self) -> None:
+        assert self.fn("把图表移动到下方") is True
+
+    def test_chart_reposition_zhi_xia_fang(self) -> None:
+        assert self.fn("将图表移至下方") is True
+
+    def test_chart_reposition_wang_xia(self) -> None:
+        assert self.fn("将图表往下挪") is True
+
+    def test_chart_reposition_english(self) -> None:
+        assert self.fn("reposition the chart") is True
+
+    # ── should be False — regression guards ──────────────────────────────────
+    def test_font_resize_no_chart_is_false(self) -> None:
+        assert self.fn("缩小字体") is False
+
+    def test_enlarge_title_no_chart_is_false(self) -> None:
+        assert self.fn("放大标题文字") is False
+
+    def test_shrink_text_no_chart_is_false(self) -> None:
+        assert self.fn("shrink the font size") is False
+
+    def test_delete_text_below_chart_is_false(self) -> None:
+        # "下方" as spatial noun, not movement target — must NOT trigger layout op
+        assert self.fn("将图表下方的注释删除") is False
+
+    def test_add_text_below_chart_is_false(self) -> None:
+        assert self.fn("在图表下方添加说明文字") is False
+
+    def test_color_change_chart_is_false(self) -> None:
+        # Style change on chart text — should go through LLM, not layout op
+        assert self.fn("将折线图的标题改为蓝色") is False
+
+    def test_empty_instruction_is_false(self) -> None:
+        assert self.fn("") is False
