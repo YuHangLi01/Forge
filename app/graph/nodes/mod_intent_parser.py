@@ -111,24 +111,14 @@ async def mod_intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
             filled, ModificationIntent, tier="pro"
         )
     except (ValidationError, json.JSONDecodeError) as exc:
-        # LLM returned unparseable or schema-invalid JSON — notify user, stop.
         logger.warning("mod_intent_parse_invalid_schema", error=str(exc))
-        if message_id:
-            from app.services.progress_broadcaster import ProgressBroadcaster
-
-            ProgressBroadcaster(message_id=message_id, thread_id=message_id).emit_error(
-                "修改指令解析失败，请重新描述您的修改需求（例如：把第3页的标题改为…）"
-            )
-        return {"status": TaskStatus.failed, "error": "mod_intent_parse_invalid_schema"}
+        return {
+            "status": TaskStatus.failed,
+            "error": "修改指令解析失败，请重新描述您的修改需求（例如：把第3页的标题改为…）",
+        }
     except Exception:
         logger.exception("mod_intent_parser_failed")
-        if message_id:
-            from app.services.progress_broadcaster import ProgressBroadcaster
-
-            ProgressBroadcaster(message_id=message_id, thread_id=message_id).emit_error(
-                "修改意图解析出错，请稍后重试"
-            )
-        return {"status": TaskStatus.failed, "error": "mod_intent_parser_failed"}
+        return {"status": TaskStatus.failed, "error": "修改意图解析出错，请稍后重试"}
 
     # Override target when pre-disambiguation is conclusive
     if force_target is not None:

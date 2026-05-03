@@ -171,6 +171,8 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         title=updated.get("heading", target_slide.title),
         bullets=updated.get("bullets") or [],
         speaker_notes=updated.get("speaker_notes", ""),
+        visual_hint=target_slide.visual_hint,
+        element_ids=target_slide.element_ids,
         chart=chart_schema,
     )
     slides[target_idx] = new_slide
