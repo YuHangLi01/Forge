@@ -110,6 +110,14 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         return {"error": "缺少修改意图", "status": TaskStatus.failed}
 
     scope_identifier: str = getattr(mod_intent, "scope_identifier", "第1页")
+    scope_type: str = getattr(mod_intent, "scope_type", "specific_slide")
+    if scope_type not in ("specific_slide",):
+        return {
+            "error": (
+                f"PPT 修改仅支持指定具体页面，不支持范围「{scope_identifier}」，请说明要修改第几页"
+            ),
+            "status": TaskStatus.failed,
+        }
     instruction: str = getattr(mod_intent, "instruction", "")
     if not instruction.strip():
         return {"error": "修改指令为空", "status": TaskStatus.failed}

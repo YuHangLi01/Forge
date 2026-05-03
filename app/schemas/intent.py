@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.enums import ModificationType, OutputFormat, ScopeType, TaskType
 
+_VALID_SCOPE_TYPES: frozenset[str] = frozenset(e.value for e in ScopeType)
+
 # LLM 有时会输出不在枚举里的近义词，在 Pydantic 校验前归一化
 _SCOPE_TYPE_ALIASES: dict[str, str] = {
     "page": "specific_slide",
@@ -61,8 +63,8 @@ class ModificationIntent(BaseModel):
     def normalize_scope_type(cls, v: object) -> object:
         if not isinstance(v, str):
             return v
-        normalized = _SCOPE_TYPE_ALIASES.get(v.lower(), v)
-        if normalized == v:
+        normalized = _SCOPE_TYPE_ALIASES.get(v.lower(), v.lower())
+        if normalized not in _VALID_SCOPE_TYPES:
             lower = v.lower()
             if any(kw in lower for kw in ("全文", "整体", "全部", "所有", "整个")):
                 return "full"
@@ -99,5 +101,4 @@ class ModificationIntent(BaseModel):
                 return "delete"
             if any(kw in lower for kw in ("增加", "添加", "插入", "新增", "加上", "补充")):
                 return "append"
-            return "rewrite"
         return normalized

@@ -29,4 +29,6 @@ async def error_handler_node(state: dict[str, Any]) -> dict[str, Any]:
     pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
     pb.emit_error(display_msg)
 
-    return {}
+    # Set status=completed so a stale checkpoint doesn't re-trigger error_handler
+    # on the next graph resume (task_continue / checkpoint_resume).
+    return {"status": TaskStatus.completed}

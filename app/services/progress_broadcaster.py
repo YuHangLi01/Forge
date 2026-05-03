@@ -107,6 +107,8 @@ class ProgressBroadcaster:
         card update.  Running in a daemon thread gives _emit_async its own loop
         via asyncio.run(), which is independent of the calling loop's lifecycle.
         """
+        if not self.message_id:
+            return
         card = dict(self._current_card)  # snapshot before any mutation
         threading.Thread(
             target=asyncio.run,
@@ -171,6 +173,8 @@ class ProgressBroadcaster:
         Uses the same daemon-thread pattern as _emit() so the send is not subject
         to the calling event loop's lifecycle (critical in Celery workers).
         """
+        if not self.message_id:
+            return
         message_id = self.message_id
 
         def _run() -> None:
