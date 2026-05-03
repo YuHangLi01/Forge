@@ -14,6 +14,7 @@ import structlog
 from app.graph.nodes._decorator import graph_node
 from app.schemas.enums import TaskStatus
 from app.schemas.plan import PlanSchema, PlanStep
+from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
@@ -86,6 +87,13 @@ async def lego_orchestrator_node(state: dict[str, Any]) -> dict[str, Any]:
         step_count=len(plan.steps),
         total_seconds=plan.total_estimated_seconds,
     )
+
+    steps_preview = [
+        {"node_name": s.node_name, "estimated_seconds": s.estimated_seconds} for s in plan.steps
+    ]
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.emit_plan_preview(steps=steps_preview, total_seconds=plan.total_estimated_seconds)
+
     pending_action = {
         "kind": "plan_confirm",
         "thread_id": message_id,

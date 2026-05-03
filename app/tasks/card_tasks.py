@@ -122,7 +122,7 @@ async def _handle_plan_confirm(value: dict[str, Any]) -> dict[str, Any]:
         state = await graph.aget_state(config)
         chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
 
-        await graph.aupdate_state(config, {"pending_user_action": None}, as_node="planner")
+        await graph.aupdate_state(config, {"pending_user_action": None}, as_node="step_router")
 
         # Immediate feedback so user knows something is happening
         # thread_id == original message_id (see message_tasks.py)
