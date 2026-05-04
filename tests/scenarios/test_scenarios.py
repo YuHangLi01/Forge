@@ -112,6 +112,7 @@ async def test_scenario_a_doc_pipeline() -> None:
             new=AsyncMock(return_value=outline),
         ),
         patch("app.integrations.feishu.adapter.FeishuAdapter.update_card", new=AsyncMock()),
+        patch("app.graph.nodes.doc_structure_gen.ProgressBroadcaster"),
     ):
         s1 = await doc_structure_gen_node(state)
 
@@ -126,6 +127,7 @@ async def test_scenario_a_doc_pipeline() -> None:
             new=AsyncMock(return_value="内容段落。" * 10),
         ),
         patch("app.integrations.feishu.adapter.FeishuAdapter.update_card", new=AsyncMock()),
+        patch("app.graph.nodes.doc_content_gen.ProgressBroadcaster"),
     ):
         s2 = await doc_content_gen_node(state2)
 
@@ -144,6 +146,7 @@ async def test_scenario_a_doc_pipeline() -> None:
             new=AsyncMock(),
         ),
         patch("app.integrations.feishu.adapter.FeishuAdapter.update_card", new=AsyncMock()),
+        patch("app.graph.nodes.feishu_doc_write.ProgressBroadcaster"),
     ):
         s3 = await feishu_doc_write_node(state3)
 
@@ -191,6 +194,7 @@ async def test_scenario_c_modification_chain() -> None:
             "app.integrations.feishu.adapter.FeishuAdapter.update_card",
             new=AsyncMock(),
         ),
+        patch("app.graph.nodes.doc_section_editor.ProgressBroadcaster"),
     ):
         from app.graph.nodes.doc_section_editor import doc_section_editor_node
 
@@ -227,6 +231,7 @@ async def test_scenario_c_modification_chain() -> None:
             "app.integrations.feishu.adapter.FeishuAdapter.update_card",
             new=AsyncMock(),
         ),
+        patch("app.graph.nodes.doc_section_editor.ProgressBroadcaster"),
     ):
         result2 = await doc_section_editor_node(state2)
 
@@ -262,6 +267,7 @@ async def test_scenario_b_planner_template_fallback() -> None:
             "app.integrations.feishu.adapter.FeishuAdapter.update_card",
             new=AsyncMock(),
         ),
+        patch("app.graph.nodes.planner.ProgressBroadcaster"),
     ):
         result = await planner_node(state)
 
