@@ -81,9 +81,19 @@ async def feishu_ppt_write_node(state: dict[str, Any]) -> dict[str, Any]:
 
     adapter = FeishuAdapter()
     svc = PPTService(adapter=adapter)
-    ppt_artifact = await svc.create_from_outline(title, slides, token_name=token_name)
-
     pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+
+    try:
+        ppt_artifact = await svc.create_from_outline(title, slides, token_name=token_name)
+    except Exception as exc:
+        logger.exception("feishu_ppt_write_create_failed")
+        pb.emit_error(f"PPT 生成失败：{exc}")
+        return {
+            "error": str(exc),
+            "status": TaskStatus.failed,
+            "completed_steps": ["feishu_ppt_write"],
+        }
+
     if ppt_artifact.share_url:
         pb.emit_artifact(label=title, url=ppt_artifact.share_url)
     else:
