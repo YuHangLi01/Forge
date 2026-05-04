@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
+            server_default=sa.text("now()"),
             nullable=False,
         ),
         schema="forge",

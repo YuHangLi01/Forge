@@ -29,7 +29,7 @@ async def feishu_doc_write_node(state: dict[str, Any]) -> dict[str, Any]:
     if not doc_markdown.strip():
         logger.warning("feishu_doc_write_empty_markdown")
         pb.emit_error("文档内容未生成，请重新发送请求")
-        return {"status": TaskStatus.completed, "completed_steps": ["feishu_doc_write"]}
+        return {"error": "doc_markdown is empty", "status": TaskStatus.failed}
 
     adapter = FeishuAdapter()
     svc = FeishuDocService(adapter)
@@ -39,11 +39,7 @@ async def feishu_doc_write_node(state: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         logger.exception("feishu_doc_write_create_failed")
         pb.emit_error(f"飞书文档写入失败：{exc}")
-        return {
-            "error": str(exc),
-            "status": TaskStatus.failed,
-            "completed_steps": ["feishu_doc_write"],
-        }
+        return {"error": str(exc), "status": TaskStatus.failed}
 
     # Grant public read access (tenant_readable) so the share URL works
     try:

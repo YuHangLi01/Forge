@@ -270,29 +270,31 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
         # D-6: update task row after graph finishes
         try:
             async with get_session() as session:
-                await update_task_status(session, task_id, TaskStatus.completed)
+                await update_task_status(session, task_id, final_status)
         except Exception:
             logger.exception("task_update_db_failed", task_id=task_id)
 
-        # Persist artifacts and plan to DB so they survive worker restarts
-        try:
-            doc_artifact = result.get("doc")
-            ppt_artifact = result.get("ppt")
-            plan_obj = result.get("plan")
-            doc_id_val = getattr(doc_artifact, "doc_id", None) if doc_artifact else None
-            ppt_id_val = getattr(ppt_artifact, "ppt_id", None) if ppt_artifact else None
-            plan_dict = plan_obj.model_dump() if plan_obj is not None else None
-            if doc_id_val or ppt_id_val or plan_dict:
-                async with get_session() as session:
-                    await update_task_artifacts(
-                        session,
-                        task_id,
-                        doc_id=doc_id_val,
-                        ppt_id=ppt_id_val,
-                        plan_json=plan_dict,
-                    )
-        except Exception:
-            logger.exception("task_artifacts_db_failed", task_id=task_id)
+        # Persist artifacts and plan to DB so they survive worker restarts.
+        # Only write on success — a failed/error status means artifacts may be partial.
+        if final_status == TaskStatus.completed:
+            try:
+                doc_artifact = result.get("doc")
+                ppt_artifact = result.get("ppt")
+                plan_obj = result.get("plan")
+                doc_id_val = getattr(doc_artifact, "doc_id", None) if doc_artifact else None
+                ppt_id_val = getattr(ppt_artifact, "ppt_id", None) if ppt_artifact else None
+                plan_dict = plan_obj.model_dump() if plan_obj is not None else None
+                if doc_id_val or ppt_id_val or plan_dict:
+                    async with get_session() as session:
+                        await update_task_artifacts(
+                            session,
+                            task_id,
+                            doc_id=doc_id_val,
+                            ppt_id=ppt_id_val,
+                            plan_json=plan_dict,
+                        )
+            except Exception:
+                logger.exception("task_artifacts_db_failed", task_id=task_id)
 
         _clear_active_task(msg.chat_id, thread_id)
         if thread_id:
@@ -347,9 +349,15 @@ async def _send_timeout_card_async(message_id: str) -> None:
 
 async def _resume_graph_async(thread_id: str, chat_id: str) -> dict[str, Any]:
     from app.graph import get_or_init_graph
+    from app.services.task_lock import TaskLock
 
     graph = await get_or_init_graph()
     config = {"configurable": {"thread_id": thread_id}}
+
+    lock = TaskLock(thread_id)
+    if not await lock.acquire():
+        logger.info("resume_thread_already_locked", thread_id=thread_id)
+        return {"status": "duplicate", "thread_id": thread_id}
 
     if chat_id and thread_id:
         try:
@@ -367,10 +375,12 @@ async def _resume_graph_async(thread_id: str, chat_id: str) -> dict[str, Any]:
         result = await graph.ainvoke(None, config=config)
         logger.info("graph_resumed", thread_id=thread_id, status=result.get("status"))
         _clear_active_task(chat_id, thread_id)
+        await lock.release()
         return {"status": "completed", "thread_id": thread_id}
     except Exception as exc:
         logger.exception("graph_resume_failed", thread_id=thread_id, error=str(exc))
         _clear_active_task(chat_id, thread_id)
+        await lock.release()
         return {"status": "error", "error": str(exc)}
 
 
@@ -533,10 +543,11 @@ async def _handle_lego_text(msg: Any, lego_scenarios: list[str]) -> dict[str, An
     """Start a graph run with pre-set lego scenarios and user text as the goal."""
     from app.db.engine import get_session
     from app.graph import get_or_init_graph
-    from app.repositories.task_repo import create_task
+    from app.repositories.task_repo import create_task, update_task_artifacts, update_task_status
     from app.schemas.agent_state import make_agent_state
-    from app.schemas.enums import OutputFormat, TaskType
+    from app.schemas.enums import OutputFormat, TaskStatus, TaskType
     from app.schemas.intent import IntentSchema
+    from app.services.task_lock import TaskLock
 
     initial_state = make_agent_state(
         user_id=msg.sender_user_id,
@@ -561,6 +572,8 @@ async def _handle_lego_text(msg: Any, lego_scenarios: list[str]) -> dict[str, An
     initial_state["normalized_text"] = msg.text or ""
 
     task_id: str = initial_state["task_id"]
+    thread_id: str = msg.message_id or ""
+
     try:
         async with get_session() as session:
             await create_task(
@@ -572,12 +585,51 @@ async def _handle_lego_text(msg: Any, lego_scenarios: list[str]) -> dict[str, An
     except Exception:
         logger.exception("lego_task_create_failed", task_id=task_id)
 
-    config = {"configurable": {"thread_id": msg.message_id or ""}}
+    lock = TaskLock(thread_id) if thread_id else None
+    if lock and not await lock.acquire():
+        logger.info("lego_thread_already_locked", thread_id=thread_id)
+        return {"status": "duplicate", "message_id": msg.message_id}
+
+    config = {"configurable": {"thread_id": thread_id}}
     try:
         graph = await get_or_init_graph()
         result = await graph.ainvoke(initial_state, config=config)
-        logger.info("lego_graph_done", status=result.get("status"))
+        final_status = result.get("status", TaskStatus.completed)
+        logger.info("lego_graph_done", status=final_status)
+
+        try:
+            async with get_session() as session:
+                await update_task_status(session, task_id, final_status)
+        except Exception:
+            logger.exception("lego_task_update_db_failed", task_id=task_id)
+
+        if final_status == TaskStatus.completed:
+            try:
+                doc_artifact = result.get("doc")
+                ppt_artifact = result.get("ppt")
+                plan_obj = result.get("plan")
+                doc_id_val = getattr(doc_artifact, "doc_id", None) if doc_artifact else None
+                ppt_id_val = getattr(ppt_artifact, "ppt_id", None) if ppt_artifact else None
+                plan_dict = plan_obj.model_dump() if plan_obj is not None else None
+                if doc_id_val or ppt_id_val or plan_dict:
+                    async with get_session() as session:
+                        await update_task_artifacts(
+                            session,
+                            task_id,
+                            doc_id=doc_id_val,
+                            ppt_id=ppt_id_val,
+                            plan_json=plan_dict,
+                        )
+            except Exception:
+                logger.exception("lego_task_artifacts_db_failed", task_id=task_id)
+
+        _clear_active_task(msg.chat_id, thread_id)
+        if lock:
+            await lock.release()
         return {"status": "completed", "message_id": msg.message_id}
     except Exception:
         logger.exception("lego_graph_failed", message_id=msg.message_id)
+        _clear_active_task(msg.chat_id, thread_id)
+        if lock:
+            await lock.release()
         return {"status": "error"}

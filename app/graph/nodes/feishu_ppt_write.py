@@ -88,11 +88,7 @@ async def feishu_ppt_write_node(state: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         logger.exception("feishu_ppt_write_create_failed")
         pb.emit_error(f"PPT 生成失败：{exc}")
-        return {
-            "error": str(exc),
-            "status": TaskStatus.failed,
-            "completed_steps": ["feishu_ppt_write"],
-        }
+        return {"error": str(exc), "status": TaskStatus.failed}
 
     if ppt_artifact.share_url:
         pb.emit_artifact(label=title, url=ppt_artifact.share_url)

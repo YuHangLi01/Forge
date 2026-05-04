@@ -69,20 +69,17 @@ class LLMService:
             usage=usage,
         )
 
-        # Fire-and-forget cost recording
         task_id = current_task_id.get("")
         node_name = current_node_name.get("")
         if task_id and usage:
             from app.services.token_meter import record_usage
 
-            asyncio.ensure_future(
-                record_usage(
-                    task_id=task_id,
-                    node_name=node_name,
-                    model=str(getattr(llm, "model_name", tier)),
-                    prompt_tokens=int(usage.get("input_tokens", 0)),
-                    completion_tokens=int(usage.get("output_tokens", 0)),
-                )
+            await record_usage(
+                task_id=task_id,
+                node_name=node_name,
+                model=str(getattr(llm, "model_name", tier)),
+                prompt_tokens=int(usage.get("input_tokens", 0)),
+                completion_tokens=int(usage.get("output_tokens", 0)),
             )
 
         return content
