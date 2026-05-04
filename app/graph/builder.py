@@ -32,6 +32,8 @@ WORK_NODES: list[str] = [
     "delivery_node",
     # Meta: mid-execution replanner (inserted dynamically by step_router)
     "mid_execution_replanner",
+    # Stage 4: cross-session prior artifact lookup for modify path
+    "prior_artifact_retrieval",
 ]
 
 # Routing/terminal nodes
@@ -64,6 +66,8 @@ _ROUTED_WORK_NODES: list[str] = [
     "delivery_node",
     # Meta
     "mid_execution_replanner",
+    # Stage 4: cross-session prior artifact lookup
+    "prior_artifact_retrieval",
 ]
 
 # step_router can route to any of these destinations
@@ -95,6 +99,8 @@ _ROUTER_TARGETS: dict[str, str] = {
         "checkpoint_control",
         # Meta
         "mid_execution_replanner",
+        # Stage 4: cross-session prior artifact lookup
+        "prior_artifact_retrieval",
     ]
 }
 _ROUTER_TARGETS[END] = END
@@ -127,6 +133,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     from app.graph.nodes.ppt_slide_editor import ppt_slide_editor_node
     from app.graph.nodes.ppt_structure_gen import ppt_structure_gen_node
     from app.graph.nodes.preprocess import preprocess_node
+    from app.graph.nodes.prior_artifact_retrieval import prior_artifact_retrieval_node
     from app.graph.nodes.scenario_composer import scenario_composer_node
     from app.graph.nodes.step_router import route, step_router_node
 
@@ -150,6 +157,7 @@ def build_graph(checkpointer: Any = None) -> Any:
         "lego_orchestrator": lego_orchestrator_node,
         "delivery_node": delivery_node_node,
         "mid_execution_replanner": mid_execution_replanner_node,
+        "prior_artifact_retrieval": prior_artifact_retrieval_node,
     }
 
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)

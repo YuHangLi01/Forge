@@ -43,6 +43,10 @@ async def _handle_card_action_async(payload: dict[str, Any]) -> dict[str, Any]:
         return await _handle_mod_target(value)
     if action_kind == "lego_start":
         return await _handle_lego_start(value)
+    if action_kind == "confirm_prior_artifact":
+        return await _handle_confirm_prior_artifact(value)
+    if action_kind == "deny_prior_artifact":
+        return await _handle_deny_prior_artifact(value)
 
     logger.warning("card_action_unhandled", action_kind=action_kind)
     return {"status": "unhandled"}
@@ -448,4 +452,66 @@ async def _handle_lego_start(value: dict[str, Any]) -> dict[str, Any]:
         return {"status": "waiting_for_text", "scenarios": scenarios}
     except Exception:
         logger.exception("lego_start_failed", chat_id=chat_id)
+        return {"status": "error"}
+
+
+async def _handle_confirm_prior_artifact(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '✅ 是的' on the prior-artifact confirmation card.
+
+    Clear the pending gate so the graph resumes into mod_intent_parser with
+    the reconstructed PPT already in state.
+    """
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        logger.warning("confirm_prior_artifact_missing_thread_id")
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        state = await graph.aget_state(config)
+        chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
+
+        await graph.aupdate_state(
+            config,
+            {"pending_user_action": None},
+            as_node="prior_artifact_retrieval",
+        )
+        await _send_progress_card(thread_id, "✏️ 好的，正在准备修改历史产物…")
+
+        from app.tasks.message_tasks import resume_graph_task
+
+        resume_graph_task.delay(thread_id, chat_id)
+        logger.info("confirm_prior_artifact_dispatched", thread_id=thread_id)
+        return {"status": "dispatched", "thread_id": thread_id}
+    except Exception:
+        logger.exception("confirm_prior_artifact_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+
+async def _handle_deny_prior_artifact(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '🔄 不是' — clear state and let user re-describe."""
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        await graph.aupdate_state(
+            config,
+            {"pending_user_action": None, "ppt": None},
+            as_node="prior_artifact_retrieval",
+        )
+        await _reply_text(thread_id, "好的，请描述一下你说的是哪份材料 🔍")
+        logger.info("deny_prior_artifact_handled", thread_id=thread_id)
+        return {"status": "notified"}
+    except Exception:
+        logger.exception("deny_prior_artifact_failed", thread_id=thread_id)
         return {"status": "error"}

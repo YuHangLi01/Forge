@@ -59,8 +59,19 @@ def test_pending_user_action_ignored_when_cancelled() -> None:
 # ── Priority 3: modification path ────────────────────────────────────────────
 
 
-def test_modify_intent_without_mod_intent_goes_to_mod_intent_parser() -> None:
+def test_modify_intent_without_artifacts_goes_to_prior_artifact_retrieval() -> None:
+    # No doc/ppt in state → cross-session flow, look up prior delivered artifact first.
     state = {"intent": _intent(TaskType.modify_existing), "mod_intent": None}
+    assert route(state) == "prior_artifact_retrieval"
+
+
+def test_modify_intent_without_mod_intent_goes_to_mod_intent_parser() -> None:
+    # Artifact already in state (same-session) → skip lookup, parse modify intent.
+    state = {
+        "intent": _intent(TaskType.modify_existing),
+        "mod_intent": None,
+        "doc": MagicMock(),
+    }
     assert route(state) == "mod_intent_parser"
 
 
@@ -68,6 +79,7 @@ def test_modify_intent_with_mod_intent_goes_to_doc_section_editor() -> None:
     state = {
         "intent": _intent(TaskType.modify_existing),
         "mod_intent": MagicMock(),
+        "doc": MagicMock(),
     }
     assert route(state) == "doc_section_editor"
 

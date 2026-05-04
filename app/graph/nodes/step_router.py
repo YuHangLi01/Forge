@@ -67,6 +67,14 @@ def route(state: dict[str, Any]) -> str:
 
     # ── Priority 3: modification path ────────────────────────────────────────
     if intent is not None and getattr(intent, "task_type", None) == TaskType.modify_existing:
+        completed = set(state.get("completed_steps") or [])
+        # Cross-session: no artifact in state yet → find the prior delivered artifact first.
+        if (
+            state.get("ppt") is None
+            and state.get("doc") is None
+            and "prior_artifact_retrieval" not in completed
+        ):
+            return "prior_artifact_retrieval"
         if state.get("mod_intent") is None:
             return "mod_intent_parser"
         mod_intent_obj = state.get("mod_intent")

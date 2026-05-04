@@ -23,6 +23,7 @@ _NODE_LABELS: dict[str, str] = {
     "lego_orchestrator": "编排多场景任务",
     "checkpoint_control": "执行检查点控制",
     "clarify_resume": "处理用户补充信息",
+    "prior_artifact_retrieval": "检索历史产物",
     "error_handler": "处理错误",
 }
 
@@ -405,4 +406,62 @@ def lego_scenario_select_card(thread_id: str, chat_id: str) -> dict[str, object]
                 ],
             },
         ],
+    }
+
+
+def prior_artifact_confirm_card(
+    *,
+    title: str,
+    share_url: str,
+    slide_count: int,
+    task_id: str,
+    message_id: str,
+) -> dict[str, object]:
+    """Confirmation card shown when a previously-delivered artifact is found in ChromaDB."""
+    subtitle = f"📊 {slide_count} 页 · {title}"
+    return {
+        "type": "card",
+        "body": {
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": (
+                            f"我找到了你之前完成的任务产物：\n\n**{title}**\n\n{subtitle}"
+                            + (f"\n[打开产物]({share_url})" if share_url else "")
+                            + "\n\n你说的是这个吗？"
+                        ),
+                    },
+                },
+                {
+                    "tag": "action",
+                    "actions": [
+                        {
+                            "tag": "button",
+                            "text": {"tag": "plain_text", "content": "✅ 是的"},
+                            "type": "primary",
+                            "value": {
+                                "action": "confirm_prior_artifact",
+                                "task_id": task_id,
+                                "thread_id": message_id,
+                            },
+                        },
+                        {
+                            "tag": "button",
+                            "text": {"tag": "plain_text", "content": "🔄 不是，我说的是另一份"},
+                            "type": "default",
+                            "value": {
+                                "action": "deny_prior_artifact",
+                                "thread_id": message_id,
+                            },
+                        },
+                    ],
+                },
+            ]
+        },
+        "header": {
+            "title": {"content": "找到历史产物", "tag": "plain_text"},
+            "template": "turquoise",
+        },
     }

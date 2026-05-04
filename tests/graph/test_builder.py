@@ -20,9 +20,9 @@ def test_all_work_nodes_in_all_nodes_list() -> None:
 
 def test_all_nodes_count() -> None:
     assert (
-        len(WORK_NODES) == 19
-    )  # 11 doc-pipeline + 4 ppt-pipeline + 2 lego orchestration + 1 delivery + 1 meta
-    assert len(ALL_NODES) == 22  # 19 work + step_router + error_handler + checkpoint_control
+        len(WORK_NODES) == 20
+    )  # 11 doc-pipeline + 4 ppt-pipeline + 2 lego orchestration + 1 delivery + 2 meta
+    assert len(ALL_NODES) == 23  # 20 work + step_router + error_handler + checkpoint_control
 
 
 def test_build_graph_returns_different_instances() -> None:
