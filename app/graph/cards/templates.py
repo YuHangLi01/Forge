@@ -218,6 +218,42 @@ def mod_target_clarify_card(
     }
 
 
+def battle_report_card(
+    *,
+    doc_url: str | None = None,
+    doc_title: str | None = None,
+    ppt_url: str | None = None,
+    ppt_title: str | None = None,
+    is_partial: bool = False,
+) -> dict[str, object]:
+    """Consolidated delivery card shown after all artifacts are generated."""
+    header_template = "orange" if is_partial else "green"
+    header_text = "任务部分完成" if is_partial else "任务完成"
+
+    lines: list[str] = []
+    if doc_url:
+        label = doc_title or "飞书文档"
+        lines.append(f"📄 [{label}]({doc_url})")
+    if ppt_url:
+        label = ppt_title or "演示文稿"
+        lines.append(f"📊 [{label}]({ppt_url})")
+
+    content = "\n".join(lines) if lines else "无可用产出物"
+    if is_partial:
+        content += "\n\n> ⚠️ 部分步骤未能完成，以上为已生成内容。"
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": header_template,
+            "title": {"tag": "plain_text", "content": header_text},
+        },
+        "elements": [
+            {"tag": "markdown", "content": content},
+        ],
+    }
+
+
 def error_card(message: str) -> dict[str, object]:
     """Simple error notification card."""
     return {

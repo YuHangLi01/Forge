@@ -144,11 +144,34 @@ def test_plan_drives_next_node() -> None:
     assert route(state) == "doc_structure_gen"
 
 
-def test_all_plan_steps_complete_returns_end() -> None:
+def test_all_plan_steps_complete_routes_to_delivery() -> None:
+    """When plan is exhausted and delivery_node hasn't run yet, route to delivery_node."""
     state = {
         "intent": _intent(),
         "completed_steps": ["context_retrieval"],
         "plan": _plan(None),  # next_runnable_step returns None
+    }
+    assert route(state) == "delivery_node"
+
+
+def test_all_plan_steps_complete_after_delivery_returns_end() -> None:
+    """After delivery_node completes, route to END."""
+    state = {
+        "intent": _intent(),
+        "completed_steps": ["context_retrieval", "delivery_node"],
+        "plan": _plan(None),
+    }
+    assert route(state) == END
+
+
+def test_modify_existing_completed_returns_end_not_delivery() -> None:
+    """delivery_node is skipped for modify_existing tasks even when status=completed."""
+    state = {
+        "status": TaskStatus.completed,
+        "intent": _intent(TaskType.modify_existing),
+        "completed_steps": ["doc_section_editor"],
+        "plan": None,
+        "pending_user_action": None,
     }
     assert route(state) == END
 
