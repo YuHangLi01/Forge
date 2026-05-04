@@ -90,6 +90,17 @@ class ProgressBroadcaster:
         card = plan_preview_card(steps=steps, thread_id=self.thread_id, total_seconds=total_seconds)
         self._send_now(card)
 
+    def emit_tool_use(self, tool_name: str, input_summary: str, output_summary: str = "") -> None:
+        from app.graph.cards.templates import tool_use_card
+
+        self._send_now(
+            tool_use_card(
+                tool_name=tool_name,
+                input_summary=input_summary,
+                output_summary=output_summary,
+            )
+        )
+
     def emit_error(self, message: str) -> None:
         from app.graph.cards.templates import error_card
 

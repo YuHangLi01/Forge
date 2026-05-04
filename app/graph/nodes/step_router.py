@@ -104,7 +104,19 @@ def route(state: dict[str, Any]) -> str:
             return "scenario_composer"
         return "planner"
 
-    # ── Priority 4e/f: follow the plan ──────────────────────────────────────
+    # ── Priority 4e: mid-execution replanner ────────────────────────────────
+    # After ppt_structure_gen, if quality is low and replanner has not yet run,
+    # insert the replanner before the next plan step.
+    if (
+        "ppt_structure_gen" in completed
+        and "mid_execution_replanner" not in completed
+        and (state.get("quality_score") or 1.0) < 0.6
+        and plan is not None
+        and any(s.node_name == "ppt_content_gen" for s in plan.steps)
+    ):
+        return "mid_execution_replanner"
+
+    # ── Priority 4f: follow the plan ────────────────────────────────────────
     next_step = plan.next_runnable_step(completed)
     if next_step is None:
         # Plan exhausted — run delivery for create tasks if not yet done.

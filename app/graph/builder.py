@@ -30,6 +30,8 @@ WORK_NODES: list[str] = [
     "lego_orchestrator",
     # Stage 4: consolidated delivery
     "delivery_node",
+    # Meta: mid-execution replanner (inserted dynamically by step_router)
+    "mid_execution_replanner",
 ]
 
 # Routing/terminal nodes
@@ -60,6 +62,8 @@ _ROUTED_WORK_NODES: list[str] = [
     "lego_orchestrator",
     # Stage 4: delivery
     "delivery_node",
+    # Meta
+    "mid_execution_replanner",
 ]
 
 # step_router can route to any of these destinations
@@ -89,6 +93,8 @@ _ROUTER_TARGETS: dict[str, str] = {
         "delivery_node",
         "error_handler",
         "checkpoint_control",
+        # Meta
+        "mid_execution_replanner",
     ]
 }
 _ROUTER_TARGETS[END] = END
@@ -114,6 +120,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     from app.graph.nodes.feishu_ppt_write import feishu_ppt_write_node
     from app.graph.nodes.intent_parser import intent_parser_node
     from app.graph.nodes.lego_orchestrator import lego_orchestrator_node
+    from app.graph.nodes.mid_execution_replanner import mid_execution_replanner_node
     from app.graph.nodes.mod_intent_parser import mod_intent_parser_node
     from app.graph.nodes.planner import planner_node
     from app.graph.nodes.ppt_content_gen import ppt_content_gen_node
@@ -142,6 +149,7 @@ def build_graph(checkpointer: Any = None) -> Any:
         "scenario_composer": scenario_composer_node,
         "lego_orchestrator": lego_orchestrator_node,
         "delivery_node": delivery_node_node,
+        "mid_execution_replanner": mid_execution_replanner_node,
     }
 
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)

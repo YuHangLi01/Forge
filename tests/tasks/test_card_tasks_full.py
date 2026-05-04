@@ -167,8 +167,10 @@ class TestHandlePlanConfirm:
 
         graph = _make_graph_mock()
         graph.aget_state = AsyncMock(side_effect=RuntimeError("boom"))
+        # Use a unique thread_id so the idempotency lock from test_successful_confirm
+        # (thread_id="t1") does not cause a "duplicate" short-circuit here.
         with patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph):
-            result = await _handle_plan_confirm({"thread_id": "t1"})
+            result = await _handle_plan_confirm({"thread_id": "t1-exception-test"})
         assert result["status"] == "error"
 
 

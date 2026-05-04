@@ -97,9 +97,7 @@ class LLMService:
 
         # Reasoning models (doubao-seed-*) don't support function calling.
         # Ask the model to reply with a JSON block; parse it manually.
-        json_prompt = (
-            f"{prompt}\n\n" "请以 JSON 格式输出，用 ```json ... ``` 包裹，不要输出其他内容。"
-        )
+        json_prompt = f"{prompt}\n\n请以 JSON 格式输出，用 ```json ... ``` 包裹，不要输出其他内容。"
         raw_text = await self.invoke(json_prompt, tier=tier)
 
         # Extract the first ```json ... ``` block, or fall back to the whole response.

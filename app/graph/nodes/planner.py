@@ -139,6 +139,7 @@ async def planner_node(state: dict[str, Any]) -> dict[str, Any]:
     llm = LLMService()
     plan: PlanSchema | None = None
 
+    pb.emit_tool_use("任务规划（豆包 Pro）", f"goal={primary_goal[:40]}, formats={output_formats}")
     for attempt in range(2):
         try:
             candidate: PlanSchema = await llm.structured(filled, PlanSchema, tier="pro")
@@ -162,6 +163,11 @@ async def planner_node(state: dict[str, Any]) -> dict[str, Any]:
     steps_preview = [
         {"node_name": s.node_name, "estimated_seconds": s.estimated_seconds} for s in plan.steps
     ]
+    pb.emit_tool_use(
+        "任务规划（豆包 Pro）",
+        f"goal={primary_goal[:40]}",
+        f"返回 {len(plan.steps)} 步 plan，预计 {plan.total_estimated_seconds}s",
+    )
     pb.emit_plan_preview(steps=steps_preview, total_seconds=plan.total_estimated_seconds)
 
     pending_action = {

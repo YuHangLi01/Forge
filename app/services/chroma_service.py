@@ -82,14 +82,28 @@ class ChromaService:
         query_text: str,
         n_results: int = 5,
         query_embedding: list[float] | None = None,
+        extra_where: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """Query the collection.
+
+        Parameters
+        ----------
+        extra_where:
+            Additional ChromaDB ``where`` filter clauses merged with the
+            mandatory ``user_id`` filter via ``$and``.
+            Example: ``{"source": "delivered"}``
+        """
         self._require_user_id(user_id)
 
         def _query() -> Any:
             col = _get_collection()
+            if extra_where:
+                where: dict[str, Any] = {"$and": [{"user_id": user_id}, extra_where]}
+            else:
+                where = {"user_id": user_id}
             kwargs: dict[str, Any] = {
                 "n_results": n_results,
-                "where": {"user_id": user_id},
+                "where": where,
                 "include": ["documents", "metadatas", "distances"],
             }
             if query_embedding is not None:

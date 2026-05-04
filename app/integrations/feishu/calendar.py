@@ -113,18 +113,11 @@ class FeishuCalendarClient:
             import lark_oapi as lark
             from lark_oapi.api.calendar.v4 import ListCalendarRequest
 
-            # User-token request requires a separate client with user token type
-            user_client = (
-                lark.Client.builder()
-                .app_id(self._client.config.app_id if hasattr(self._client, "config") else "")
-                .app_secret(
-                    self._client.config.app_secret if hasattr(self._client, "config") else ""
-                )
-                .build()
-            )
+            option = lark.RequestOption.builder().user_access_token(self._user_token).build()
             cal_req = ListCalendarRequest.builder().page_size(10).build()
-            # Inject user token via request options when available
-            cal_resp = await asyncio.to_thread(user_client.calendar.v4.calendar.list, cal_req)
+            cal_resp = await asyncio.to_thread(
+                self._client.calendar.v4.calendar.list, cal_req, option
+            )
         except Exception as exc:
             raise CalendarFetchError(f"calendar list API error: {exc}") from exc
 
@@ -158,7 +151,9 @@ class FeishuCalendarClient:
                 .page_size(max_events)
                 .build()
             )
-            resp = await asyncio.to_thread(self._client.calendar.v4.calendar_event.list, req)
+            resp = await asyncio.to_thread(
+                self._client.calendar.v4.calendar_event.list, req, option
+            )
         except Exception as exc:
             raise CalendarFetchError(f"calendar API error: {exc}") from exc
 

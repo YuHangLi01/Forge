@@ -90,8 +90,18 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Feishu Wiki (knowledge base archival)
+    FEISHU_WIKI_SPACE_ID: str = Field(
+        default="",
+        description="飞书知识库 Space ID，用于归档任务产物（留空则跳过归档）",
+    )
+    FEISHU_WIKI_PARENT_NODE_TOKEN: str = Field(
+        default="",
+        description="飞书知识库父节点 Token，新归档节点挂在此节点下（留空则挂根节点）",
+    )
+
     # Feature stage
-    FORGE_STAGE: int = Field(default=2, description="当前功能阶段：2=doc only，3=doc+ppt")
+    FORGE_STAGE: int = Field(default=3, description="当前功能阶段：2=doc only，3=doc+ppt")
 
 
 @lru_cache

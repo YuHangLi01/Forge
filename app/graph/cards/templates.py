@@ -176,7 +176,7 @@ def mod_target_clarify_card(
             {
                 "tag": "markdown",
                 "content": (
-                    f"我看到你的指令可能针对文档或 PPT。" f"请确认「{scope_identifier}」是指哪个？"
+                    f"我看到你的指令可能针对文档或 PPT。请确认「{scope_identifier}」是指哪个？"
                 ),
             },
             {
@@ -225,18 +225,29 @@ def battle_report_card(
     ppt_url: str | None = None,
     ppt_title: str | None = None,
     is_partial: bool = False,
+    mention_user_ids: list[str] | None = None,
+    wiki_url: str | None = None,
 ) -> dict[str, object]:
     """Consolidated delivery card shown after all artifacts are generated."""
     header_template = "orange" if is_partial else "green"
-    header_text = "任务部分完成" if is_partial else "任务完成"
+    header_text = "任务部分完成" if is_partial else "🎉 任务完成"
 
     lines: list[str] = []
+
+    # @mention relevant contributors (Feishu markdown `<at user_id="...">` syntax)
+    if mention_user_ids:
+        at_line = " ".join(f'<at user_id="{uid}"></at>' for uid in mention_user_ids)
+        lines.append(at_line)
+        lines.append("")
+
     if doc_url:
         label = doc_title or "飞书文档"
         lines.append(f"📄 [{label}]({doc_url})")
     if ppt_url:
         label = ppt_title or "演示文稿"
         lines.append(f"📊 [{label}]({ppt_url})")
+    if wiki_url:
+        lines.append(f"📂 [知识库归档]({wiki_url})")
 
     content = "\n".join(lines) if lines else "无可用产出物"
     if is_partial:
@@ -320,6 +331,25 @@ def calendar_clarify_card(
             },
             {"tag": "action", "actions": buttons},
         ],
+    }
+
+
+def tool_use_card(
+    tool_name: str,
+    input_summary: str,
+    output_summary: str = "",
+) -> dict[str, object]:
+    """Progress card showing an in-flight tool call (visible Agent self-awareness)."""
+    body = f"🔧 **调用工具：{tool_name}**\n\n**输入：** {input_summary}"
+    if output_summary:
+        body += f"\n\n**返回：** {output_summary}"
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": "Agent 正在调用工具"},
+        },
+        "elements": [{"tag": "markdown", "content": body}],
     }
 
 

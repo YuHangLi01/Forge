@@ -1,4 +1,10 @@
-"""error_handler node: classify error, emit appropriate card, and terminate the graph."""
+"""error_handler node: classify error, emit appropriate card, and terminate the graph.
+
+When the error looks like a transient LLM failure and no retry has been attempted,
+the node attempts a tier downgrade: it resets intent and routes back to intent_parser
+with tier="lite".  This makes the Step 12 demo scenario ("LLM service unavailable →
+fallback to Lite model") work without crashing.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +29,18 @@ _DEGRADATION_MATRIX: list[tuple[str, str, str]] = [
     ("ConnectionError", "网络连接错误，请检查服务状态", "error"),
 ]
 
+# Patterns that indicate a transient LLM error eligible for tier downgrade
+_LLM_ERROR_PATTERNS: tuple[str, ...] = (
+    "429",
+    "RateLimitExceeded",
+    "timeout",
+    "Timeout",
+    "LLM",
+    "llm",
+    "model",
+    "token",
+)
+
 _DEFAULT_ERROR_MSG = "处理过程中出现错误，请稍后重试"
 
 
@@ -34,6 +52,10 @@ def _classify_error(error: str) -> tuple[str, str]:
     return _DEFAULT_ERROR_MSG, "error"
 
 
+def _is_llm_error(error: str) -> bool:
+    return any(p in error for p in _LLM_ERROR_PATTERNS)
+
+
 @graph_node("error_handler")
 async def error_handler_node(state: dict[str, Any]) -> dict[str, Any]:
     message_id: str = state.get("message_id", "")
@@ -41,6 +63,27 @@ async def error_handler_node(state: dict[str, Any]) -> dict[str, Any]:
     from app.schemas.enums import TaskStatus
 
     status = state.get("status")
+    retry_count: int = state.get("retry_count", 0) or 0
+
+    # ── Tier-downgrade path ──────────────────────────────────────────────────
+    # When the error is a transient LLM failure and we haven't retried yet,
+    # silently downgrade to lite tier and loop back to intent_parser.
+    if status != TaskStatus.cancelled and _is_llm_error(error) and retry_count < 1:
+        pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+        pb.emit_tool_use(
+            "意图理解（豆包 Lite，降级）",
+            "AI 服务异常，切换到 Lite 模型重试",
+        )
+        logger.info("error_handler_fallback_lite", error=error, retry_count=retry_count)
+        return {
+            "error": None,
+            "status": TaskStatus.running,
+            "intent": None,  # step_router sees intent=None → routes to intent_parser
+            "retry_count": retry_count + 1,
+            "_force_tier": "lite",
+        }
+
+    # ── Standard error path ──────────────────────────────────────────────────
     if status == TaskStatus.cancelled:
         display_msg = error or "任务已取消"
         log_level = "info"
