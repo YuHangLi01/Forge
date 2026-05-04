@@ -53,9 +53,19 @@ def graph_node(name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
                 logger.debug("graph_node_skipped_pending_action", node=name)
                 return {}
 
+            # Propagate task context so LLMService can tag cost metrics
+            from app.services.llm_service import current_node_name, current_task_id
+
+            task_id_token = current_task_id.set(str(state.get("task_id", "")))
+            node_name_token = current_node_name.set(name)
+
             logger.debug("graph_node_enter", node=name)
             t0 = time.monotonic()
-            result: dict[str, Any] = await fn(state)
+            try:
+                result: dict[str, Any] = await fn(state)
+            finally:
+                current_task_id.reset(task_id_token)
+                current_node_name.reset(node_name_token)
             duration_ms = (time.monotonic() - t0) * 1000
             logger.debug("graph_node_exit", node=name, duration_ms=round(duration_ms, 1))
 

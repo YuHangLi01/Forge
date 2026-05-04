@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 from collections.abc import AsyncIterator
 from typing import Literal, TypeVar
 
@@ -10,6 +11,12 @@ from app.integrations.doubao.client import get_llm
 logger = structlog.get_logger(__name__)
 
 T = TypeVar("T")
+
+# Graph nodes set this before calling LLMService so token_meter can tag records.
+current_task_id: contextvars.ContextVar[str] = contextvars.ContextVar("current_task_id", default="")
+current_node_name: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "current_node_name", default=""
+)
 
 _SYSTEM_PROMPT = "你是 Forge，飞书智能办公助手。请简洁、专业地回答用户问题。"
 
@@ -53,7 +60,7 @@ class LLMService:
             if isinstance(raw, list)
             else str(raw)
         )
-        usage = getattr(response, "usage_metadata", {})
+        usage = getattr(response, "usage_metadata", {}) or {}
         logger.info(
             "llm_invoked",
             tier=tier,
@@ -61,6 +68,23 @@ class LLMService:
             response_len=len(content),
             usage=usage,
         )
+
+        # Fire-and-forget cost recording
+        task_id = current_task_id.get("")
+        node_name = current_node_name.get("")
+        if task_id and usage:
+            from app.services.token_meter import record_usage
+
+            asyncio.ensure_future(
+                record_usage(
+                    task_id=task_id,
+                    node_name=node_name,
+                    model=str(getattr(llm, "model_name", tier)),
+                    prompt_tokens=int(usage.get("input_tokens", 0)),
+                    completion_tokens=int(usage.get("output_tokens", 0)),
+                )
+            )
+
         return content
 
     async def structured(

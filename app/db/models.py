@@ -49,6 +49,21 @@ class UserProfile(Base):
     )
 
 
+class CostMetric(Base):
+    __tablename__ = "cost_metrics"
+    __table_args__ = {"schema": "forge"}
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    node_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 class EventProcessed(Base):
     __tablename__ = "event_processed"
     __table_args__ = {"schema": "forge"}
