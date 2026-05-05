@@ -59,10 +59,13 @@ class Settings(BaseSettings):
     )
     LANGSMITH_PROJECT: str = Field(default="forge-dev", description="LangSmith project 名称")
     LANGSMITH_TRACING: bool = Field(default=False, description="LangSmith tracing 总开关")
+    LANGSMITH_HIDE_INPUTS: bool = Field(
+        default=True, description="LangSmith tracing 时隐藏输入内容（PII 保护）"
+    )
 
-    # Stage 2 graph rollout flag
+    # Graph rollout flag
     FORGE_USE_GRAPH: bool = Field(
-        default=False,
+        default=True,
         description="True 时 message_tasks 走 LangGraph; False 沿用 Stage 1 直调路径",
     )
 

@@ -36,11 +36,14 @@ def route(state: dict[str, Any]) -> str:
 
     # Completed is also terminal — prevents modify-path or plan-path from looping.
     if status == TaskStatus.completed:
+        _intent = state.get("intent")
+        _task_type = getattr(_intent, "task_type", None)
         _plan = state.get("plan")
-        if _plan is None:
-            return END
         _done = set(state.get("completed_steps") or [])
-        if _plan.next_runnable_step(_done) is None:
+        if _plan is None or _plan.next_runnable_step(_done) is None:
+            # All plan steps done — run delivery for create tasks if not yet done
+            if _task_type == TaskType.create_new and "delivery_node" not in _done:
+                return "delivery_node"
             return END
         # Plan has more steps — fall through to plan-following logic
 
@@ -95,6 +98,10 @@ def route(state: dict[str, Any]) -> str:
     # ── Priority 4e/f: follow the plan ──────────────────────────────────────
     next_step = plan.next_runnable_step(completed)
     if next_step is None:
+        # Plan exhausted — run delivery for create tasks if not yet done
+        _task_type2 = getattr(intent, "task_type", None)
+        if _task_type2 == TaskType.create_new and "delivery_node" not in completed:
+            return "delivery_node"
         return END  # END sentinel is str-compatible at runtime
     return str(next_step.node_name)
 

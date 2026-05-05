@@ -28,6 +28,8 @@ WORK_NODES: list[str] = [
     # lego multi-scenario orchestration (Stage 3)
     "scenario_composer",
     "lego_orchestrator",
+    # Stage 4: consolidated delivery
+    "delivery_node",
 ]
 
 # Routing/terminal nodes
@@ -56,6 +58,8 @@ _ROUTED_WORK_NODES: list[str] = [
     # lego orchestration
     "scenario_composer",
     "lego_orchestrator",
+    # Stage 4: delivery
+    "delivery_node",
 ]
 
 # step_router can route to any of these destinations
@@ -81,6 +85,8 @@ _ROUTER_TARGETS: dict[str, str] = {
         # lego orchestration
         "scenario_composer",
         "lego_orchestrator",
+        # Stage 4
+        "delivery_node",
         "error_handler",
         "checkpoint_control",
     ]
@@ -99,6 +105,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     from app.graph.nodes.clarify_question import clarify_question_node
     from app.graph.nodes.clarify_resume import clarify_resume_node
     from app.graph.nodes.context_retrieval import context_retrieval_node
+    from app.graph.nodes.delivery_node import delivery_node_node
     from app.graph.nodes.doc_content_gen import doc_content_gen_node
     from app.graph.nodes.doc_section_editor import doc_section_editor_node
     from app.graph.nodes.doc_structure_gen import doc_structure_gen_node
@@ -134,6 +141,7 @@ def build_graph(checkpointer: Any = None) -> Any:
         "ppt_slide_editor": ppt_slide_editor_node,
         "scenario_composer": scenario_composer_node,
         "lego_orchestrator": lego_orchestrator_node,
+        "delivery_node": delivery_node_node,
     }
 
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)

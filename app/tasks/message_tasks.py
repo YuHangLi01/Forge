@@ -55,7 +55,7 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     """Stage 2: invoke the LangGraph agent pipeline."""
     from app.db.engine import get_session
     from app.graph import get_or_init_graph
-    from app.repositories.task_repo import create_task, update_task_status
+    from app.repositories.task_repo import create_task, update_task_artifacts, update_task_status
     from app.schemas.agent_state import make_agent_state
     from app.schemas.enums import TaskStatus
 
@@ -264,6 +264,26 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
                 await update_task_status(session, task_id, TaskStatus.completed)
         except Exception:
             logger.exception("task_update_db_failed", task_id=task_id)
+
+        # Persist artifacts and plan to DB so they survive worker restarts
+        try:
+            doc_artifact = result.get("doc")
+            ppt_artifact = result.get("ppt")
+            plan_obj = result.get("plan")
+            doc_id_val = getattr(doc_artifact, "doc_id", None) if doc_artifact else None
+            ppt_id_val = getattr(ppt_artifact, "ppt_id", None) if ppt_artifact else None
+            plan_dict = plan_obj.model_dump() if plan_obj is not None else None
+            if doc_id_val or ppt_id_val or plan_dict:
+                async with get_session() as session:
+                    await update_task_artifacts(
+                        session,
+                        task_id,
+                        doc_id=doc_id_val,
+                        ppt_id=ppt_id_val,
+                        plan_json=plan_dict,
+                    )
+        except Exception:
+            logger.exception("task_artifacts_db_failed", task_id=task_id)
 
         _clear_active_task(msg.chat_id, thread_id)
         return {"status": "completed", "message_id": msg.message_id}

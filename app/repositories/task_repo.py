@@ -51,3 +51,27 @@ async def update_task_status(
     await session.commit()
     logger.info("task_status_updated", task_id=task_id, status=status)
     return True
+
+
+async def update_task_artifacts(
+    session: AsyncSession,
+    task_id: str,
+    *,
+    doc_id: str | None = None,
+    ppt_id: str | None = None,
+    plan_json: dict[str, object] | None = None,
+) -> bool:
+    task = await get_task_by_id(session, task_id)
+    if task is None:
+        logger.warning("task_not_found_for_artifacts", task_id=task_id)
+        return False
+    if doc_id is not None:
+        task.doc_id = doc_id
+    if ppt_id is not None:
+        task.ppt_id = ppt_id
+    if plan_json is not None:
+        task.plan_json = plan_json
+    task.updated_at = datetime.now(UTC)
+    await session.commit()
+    logger.info("task_artifacts_updated", task_id=task_id, doc_id=doc_id, ppt_id=ppt_id)
+    return True

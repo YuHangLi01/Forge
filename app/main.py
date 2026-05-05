@@ -14,8 +14,15 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    import os
+
     settings = get_settings()
     configure_logging()
+
+    # LangSmith PII protection — hide node inputs/outputs from traces
+    if settings.LANGSMITH_HIDE_INPUTS:
+        os.environ.setdefault("LANGCHAIN_HIDE_INPUTS", "true")
+        os.environ.setdefault("LANGCHAIN_HIDE_OUTPUTS", "true")
 
     redis_client: aioredis.Redis = aioredis.from_url(  # type: ignore[no-untyped-call]
         settings.REDIS_URL, decode_responses=True
