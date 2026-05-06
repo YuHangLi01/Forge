@@ -1,9 +1,8 @@
-"""Unit tests for ASRService.
+"""Unit tests for ASRService (Volcengine ASR v3 backend).
 
-Uses AsyncMock for both FeishuAdapter and FeishuASRClient so the test
-doesn't need real Feishu / network. The service's contract: download
-audio → transcribe → return text; on any exception, raise ForgeError
-so the caller (preprocess_node → error_handler) receives the real cause.
+Uses AsyncMock for FeishuAdapter and VolcASRV3Client so no real network calls.
+Contract: download audio → transcribe → return text; on any exception, raise
+ForgeError so the caller (preprocess_node → error_handler) gets the real cause.
 """
 
 from unittest.mock import AsyncMock
@@ -26,7 +25,8 @@ async def test_transcribe_voice_message_pipeline() -> None:
 
     assert result == "你好"
     feishu.download_message_resource.assert_awaited_once_with("om_msg_1", "fk_1", type_="audio")
-    asr.transcribe.assert_awaited_once_with(b"audio-bytes", audio_format="opus")
+    # Feishu opus voice messages → ogg format for Volcengine v3
+    asr.transcribe.assert_awaited_once_with(b"audio-bytes", audio_format="ogg")
 
 
 @pytest.mark.asyncio
@@ -46,7 +46,7 @@ async def test_transcribe_voice_message_raises_forge_error_on_asr_error() -> Non
     feishu = AsyncMock()
     feishu.download_message_resource.return_value = b"audio"
     asr = AsyncMock()
-    asr.transcribe.side_effect = ASRError("feishu_stt code=99991671")
+    asr.transcribe.side_effect = ASRError("volc_asr_v3 error: code=45000001")
 
     service = ASRService(feishu=feishu, asr=asr)
     with pytest.raises(ForgeError, match="语音转写失败"):
@@ -55,7 +55,7 @@ async def test_transcribe_voice_message_raises_forge_error_on_asr_error() -> Non
 
 @pytest.mark.asyncio
 async def test_transcribe_voice_message_empty_text_returned_as_is() -> None:
-    """ASR succeeds but recognises no speech → ASRService returns "" (not error)."""
+    """ASR succeeds but recognises no speech → ASRService returns "" (caller raises)."""
     feishu = AsyncMock()
     feishu.download_message_resource.return_value = b"silence"
     asr = AsyncMock()

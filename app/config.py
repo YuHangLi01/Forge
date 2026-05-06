@@ -20,11 +20,27 @@ class Settings(BaseSettings):
     DOUBAO_MODEL_PRO: str = Field(description="豆包 Pro 端点 ID, e.g. ep-20241230xxxxx")
     DOUBAO_MODEL_LITE: str = Field(description="豆包 Lite 端点 ID, 用于低成本任务")
 
-    # Volcano Engine ASR
-    VOLC_ASR_APP_ID: str = Field(description="火山引擎语音识别 App ID")
-    VOLC_ASR_ACCESS_TOKEN: str = Field(description="火山引擎 ASR Access Token")
+    # Volcano Engine ASR (录音文件转写 v3)
+    VOLC_ASR_APP_ID: str = Field(description="火山引擎 ASR App ID（旧版控制台 X-Api-App-Key）")
+    VOLC_ASR_ACCESS_TOKEN: str = Field(
+        description="火山引擎 ASR Access Token（旧版控制台 X-Api-Access-Key）"
+    )
+    VOLC_ASR_RESOURCE_ID: str = Field(
+        default="volc.bigasr.auc",
+        description="火山引擎 ASR Resource ID；v2.0 用 volc.seedasr.auc，v1.0 用 volc.bigasr.auc",
+    )
     VOLC_ASR_CLUSTER: str = Field(
-        default="volcengine_input_common", description="火山引擎 ASR 集群 ID"
+        default="volcengine_input_common", description="火山引擎 ASR 集群 ID（v1 遗留，v3 不使用）"
+    )
+
+    # Forge public URL — Volcengine ASR v3 需要从公网拉取音频文件
+    FORGE_PUBLIC_URL: str = Field(
+        default="",
+        description=(
+            "Forge 服务对公网可达的 Base URL，不带末尾 /，"
+            "例如 https://forge.example.com。"
+            "火山引擎 ASR v3 录音文件转写会从此地址下载临时音频，必须填写。"
+        ),
     )
 
     # PostgreSQL (async via psycopg3 asyncio)
