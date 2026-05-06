@@ -42,13 +42,12 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         try:
             from app.integrations.feishu.calendar import FeishuCalendarClient
 
-            pb.emit_tool_use("飞书日历查询", f"user={user_id}, date_hint={normalized_text[:20]}")
+            pb.emit_tool_use("飞书日历查询", f"date_hint={normalized_text[:20]}")
             client = FeishuCalendarClient()
             events = await client.get_events_around(user_id, normalized_text)
             calendar_context = format_events_for_prompt(events)
             pb.emit_tool_use(
                 "飞书日历查询",
-                f"user={user_id}",
                 f"返回 {len(events)} 个相关日程",
             )
             logger.debug("calendar_context_fetched", event_count=len(events))

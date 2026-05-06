@@ -47,7 +47,7 @@ async def context_retrieval_node(state: dict[str, Any]) -> dict[str, Any]:
     try:
         from app.services.chroma_service import ChromaService
 
-        pb.emit_tool_use("历史检索（ChromaDB）", f"user={user_id}, query={query[:30]}")
+        pb.emit_tool_use("历史检索（ChromaDB）", f"query={query[:30]}")
         svc = ChromaService()
         results = await svc.query(user_id=user_id, query_text=query, n_results=_TOP_K)
         top_summary = results[0]["text"][:60] if results else "无结果"

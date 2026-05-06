@@ -73,7 +73,7 @@ async def test_audio_asr_empty_result_raises_forge_error() -> None:
         patch("app.services.asr_service.ASRService") as MockASR,
     ):
         MockASR.return_value.transcribe_voice_message = AsyncMock(return_value="")
-        with pytest.raises(ForgeError, match="empty transcript"):
+        with pytest.raises(ForgeError, match="未检测到语音内容"):
             await preprocess_node(state)
 
 
