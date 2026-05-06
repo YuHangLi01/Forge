@@ -10,6 +10,7 @@ Public API:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlencode
 
 import structlog
@@ -39,7 +40,7 @@ def get_auth_url(user_id: str) -> str:
     return "https://open.feishu.cn/open-apis/authen/v1/authorize?" + urlencode(params)
 
 
-async def exchange_code(code: str, state: str) -> dict:  # noqa: ARG001
+async def exchange_code(code: str, state: str) -> dict[str, Any]:  # noqa: ARG001
     """Exchange an authorization code for access_token + refresh_token.
 
     Uses lark_oapi authen.v1.access_token.acreate (native async, no to_thread needed).
@@ -82,7 +83,7 @@ async def exchange_code(code: str, state: str) -> dict:  # noqa: ARG001
     }
 
 
-async def store_token(user_id: str, token_data: dict, db: AsyncSession) -> None:
+async def store_token(user_id: str, token_data: dict[str, Any], db: AsyncSession) -> None:
     """Upsert token_data into feishu_oauth_tokens for user_id."""
     from app.db.models import FeishuOAuthToken
 
@@ -155,7 +156,7 @@ async def get_valid_token(user_id: str, db: AsyncSession) -> str | None:
         new_data = await _refresh_token(user_id, row.refresh_token)
         await store_token(user_id, new_data, db)
         logger.info("feishu_oauth_token_refreshed", user_id=user_id)
-        return new_data["access_token"]
+        return str(new_data["access_token"])
     except Exception as exc:
         logger.warning("feishu_oauth_token_refresh_failed", user_id=user_id, error=str(exc))
         # Fall back to the existing token if it hasn't technically expired yet
@@ -164,7 +165,7 @@ async def get_valid_token(user_id: str, db: AsyncSession) -> str | None:
         return None
 
 
-async def _refresh_token(user_id: str, refresh_token_val: str) -> dict:
+async def _refresh_token(user_id: str, refresh_token_val: str) -> dict[str, Any]:
     import lark_oapi as lark
     from lark_oapi.api.authen.v1 import (
         CreateRefreshAccessTokenRequest,
