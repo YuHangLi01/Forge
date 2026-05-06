@@ -5,11 +5,17 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
+
+import structlog
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = structlog.get_logger(__name__)
+
+_BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 class CalendarFetchError(Exception):
@@ -38,12 +44,13 @@ _TIME_WORD_RE = re.compile(
 
 
 def _resolve_date_range(date_hint: str) -> tuple[str, str]:
-    """Convert a natural-language date hint to UTC Unix timestamps (as strings).
+    """Convert a natural-language date hint to Unix timestamps (as strings).
 
-    Returns (start_ts, end_ts) as integer strings suitable for the Feishu API.
-    Defaults to today if hint is unrecognised.
+    The window covers a full Beijing-time calendar day (00:00 — 24:00 CST),
+    not a UTC day, because "今天/明天" in the user's mental model means the
+    Beijing date. Returns (start_ts, end_ts) suitable for the Feishu API.
     """
-    today = date.today()
+    today = datetime.now(_BEIJING_TZ).date()
     weekday = today.weekday()  # 0=Mon … 6=Sun
 
     if "明天" in date_hint:
@@ -65,7 +72,7 @@ def _resolve_date_range(date_hint: str) -> tuple[str, str]:
     else:
         d = today
 
-    start_dt = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=UTC)
+    start_dt = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=_BEIJING_TZ)
     end_dt = start_dt + timedelta(days=1)
     return str(int(start_dt.timestamp())), str(int(end_dt.timestamp()))
 
@@ -111,6 +118,14 @@ class FeishuCalendarClient:
             raise CalendarFetchError(f"user {user_id} 未完成飞书日历授权")
 
         start_ts, end_ts = _resolve_date_range(date_hint)
+        logger.info(
+            "calendar_query_window",
+            date_hint=date_hint,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            start_human=datetime.fromtimestamp(int(start_ts), _BEIJING_TZ).isoformat(),
+            end_human=datetime.fromtimestamp(int(end_ts), _BEIJING_TZ).isoformat(),
+        )
 
         # Step 1: get the user's primary calendar ID using user token
         try:
@@ -140,18 +155,31 @@ class FeishuCalendarClient:
                 + (f" / raw={raw_body}" if raw_body else "")
             )
 
-        calendar_id: str | None = None
-        for cal in (cal_resp.data.calendar_list or []) if cal_resp.data else []:
-            if (
-                getattr(cal, "role", "") in ("owner", "writer")
-                or getattr(cal, "type", "") == "primary"
-            ):
-                calendar_id = getattr(cal, "calendar_id", None)
-                break
+        calendars = (cal_resp.data.calendar_list or []) if cal_resp.data else []
+        # Prefer type=primary, then owner/writer role, in that order.
+        primary = next(
+            (c for c in calendars if getattr(c, "type", "") == "primary"),
+            None,
+        )
+        if primary is None:
+            primary = next(
+                (c for c in calendars if getattr(c, "role", "") in ("owner", "writer")),
+                None,
+            )
+        calendar_id = getattr(primary, "calendar_id", None) if primary else None
 
         if not calendar_id:
             # Fallback: use user_id directly (some Feishu tenants support this)
             calendar_id = user_id
+
+        logger.info(
+            "calendar_selected",
+            calendar_id=calendar_id,
+            calendar_count=len(calendars),
+            primary_type=getattr(primary, "type", "") if primary else "",
+            primary_role=getattr(primary, "role", "") if primary else "",
+            fallback_used=(primary is None),
+        )
 
         # Step 2: list events in the date range
         try:
@@ -188,6 +216,13 @@ class FeishuCalendarClient:
             )
 
         items = (resp.data.items or []) if resp.data else []
+        logger.info(
+            "calendar_events_fetched",
+            calendar_id=calendar_id,
+            raw_items_count=len(items),
+            window=f"{start_ts}->{end_ts}",
+            sample_summaries=[getattr(it, "summary", "") for it in items[:3]],
+        )
         events: list[CalendarEvent] = []
         for item in items[:max_events]:
             events.append(
