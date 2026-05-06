@@ -239,9 +239,10 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
     thread_id: str = msg.message_id or msg.event_id or ""
 
     # Thread-level concurrency guard: prevent two workers from running the same thread.
-    if thread_id:
-        from app.services.task_lock import TaskLock
+    from app.services.task_lock import TaskLock
 
+    lock: TaskLock | None = None
+    if thread_id:
         lock = TaskLock(thread_id)
         if not await lock.acquire():
             logger.info("thread_already_locked", thread_id=thread_id)
@@ -297,10 +298,8 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
                 logger.exception("task_artifacts_db_failed", task_id=task_id)
 
         _clear_active_task(msg.chat_id, thread_id)
-        if thread_id:
-            from app.services.task_lock import TaskLock
-
-            await TaskLock(thread_id).release()
+        if lock is not None:
+            await lock.release()
         return {"status": "completed", "message_id": msg.message_id}
     except Exception as exc:
         logger.exception("graph_failed", message_id=msg.message_id, error=str(exc))
@@ -312,10 +311,8 @@ async def _handle_via_graph(msg: Any, payload: Any) -> dict[str, Any]:
             logger.exception("task_fail_update_db_failed", task_id=task_id)
 
         _clear_active_task(msg.chat_id, thread_id)
-        if thread_id:
-            from app.services.task_lock import TaskLock
-
-            await TaskLock(thread_id).release()
+        if lock is not None:
+            await lock.release()
         return {"status": "error", "error": str(exc)}
 
 
