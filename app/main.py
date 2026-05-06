@@ -35,7 +35,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.graph import get_or_init_graph
 
-    await get_or_init_graph()
+    try:
+        await get_or_init_graph()
+    except Exception:
+        logger.exception("forge_startup_failed")
+        raise
 
     logger.info("forge_startup", env=settings.APP_ENV)
     yield
