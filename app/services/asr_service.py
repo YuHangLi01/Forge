@@ -31,8 +31,9 @@ class ASRService:
         to error_handler with the real cause.
         """
         try:
+            # Feishu audio resources have file_v3_ keys — the API type is "file", not "audio"
             audio_bytes = await self._feishu.download_message_resource(
-                message_id, file_key, type_="audio"
+                message_id, file_key, type_="file"
             )
             # Feishu voice messages use opus codec in an OGG container
             text = await self._asr.transcribe(audio_bytes, audio_format="ogg")
