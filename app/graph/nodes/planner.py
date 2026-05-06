@@ -14,6 +14,18 @@ from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
+
+def _short_date(iso_ts: str) -> str:
+    """Convert "2024-07-20T10:15:00+08:00" → "7/20"; tolerant of empty/bad input."""
+    try:
+        from datetime import datetime
+
+        dt = datetime.fromisoformat(iso_ts)
+        return f"{dt.month}/{dt.day}"
+    except (ValueError, TypeError):
+        return iso_ts[:10] if iso_ts else ""
+
+
 _TEMPLATE_PLAN = PlanSchema(
     steps=[
         PlanStep(id="step_1", node_name="doc_structure_gen", depends_on=[], estimated_seconds=10),
@@ -168,7 +180,19 @@ async def planner_node(state: dict[str, Any]) -> dict[str, Any]:
         f"goal={primary_goal[:40]}",
         f"返回 {len(plan.steps)} 步 plan，预计 {plan.total_estimated_seconds}s",
     )
-    pb.emit_plan_preview(steps=steps_preview, total_seconds=plan.total_estimated_seconds)
+    notes_preview: list[dict[str, str]] = []
+    for c in (state.get("retrieved_context") or [])[:3]:
+        meta = c.get("metadata") or {}
+        ts = _short_date(str(meta.get("ts", "")))
+        snippet = (c.get("text") or "").strip().replace("\n", " ")[:60]
+        notes_preview.append({"ts": ts, "snippet": snippet})
+
+    pb.emit_plan_preview(
+        steps=steps_preview,
+        total_seconds=plan.total_estimated_seconds,
+        goal=primary_goal,
+        notes_preview=notes_preview,
+    )
 
     pending_action = {
         "kind": "plan_confirm",

@@ -59,6 +59,8 @@ def plan_preview_card(
     steps: list[dict[str, object]],
     thread_id: str,
     total_seconds: int,
+    goal: str | None = None,
+    notes_preview: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     """Card showing the execution plan with Confirm / Replan / Cancel buttons."""
     lines = []
@@ -68,6 +70,20 @@ def plan_preview_card(
         secs = step.get("estimated_seconds", 0)
         lines.append(f"{i}. {label}（约 {secs} 秒）")
     steps_md = "\n".join(lines)
+
+    parts: list[str] = []
+    if goal:
+        parts.append(f"**🎯 目标：** {goal}")
+    parts.append(f"**⏱️ 预计耗时：** 约 {total_seconds} 秒")
+    if notes_preview:
+        parts.append(f"\n📚 我从你的笔记里翻出了 **{len(notes_preview)} 条**相关记录：")
+        for n in notes_preview:
+            ts = n.get("ts", "")
+            snippet = n.get("snippet", "")
+            parts.append(f"> {ts} 你记下：「{snippet}…」")
+    parts.append(f"\n📋 **执行计划（{len(steps)} 步）**\n{steps_md}")
+    body_md = "\n".join(parts)
+
     return {
         "config": {"wide_screen_mode": True},
         "header": {
@@ -77,9 +93,7 @@ def plan_preview_card(
         "elements": [
             {
                 "tag": "markdown",
-                "content": (
-                    f"**预计步骤：**\n{steps_md}\n\n**总耗时预估：** 约 {total_seconds} 秒"
-                ),
+                "content": body_md,
             },
             {
                 "tag": "action",
