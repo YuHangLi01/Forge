@@ -46,10 +46,20 @@ async def context_retrieval_node(state: dict[str, Any]) -> dict[str, Any]:
 
     try:
         from app.services.chroma_service import ChromaService
+        from app.services.embedding_service import EmbeddingService
 
         pb.emit_tool_use("历史检索（ChromaDB）", f"query={query[:30]}")
+        # Embed with our bge-base-zh-v1.5 (768-dim) — must match the indexed
+        # vectors. Default ChromaDB embedder is MiniLM (384-dim) which would
+        # cause a dimension mismatch.
+        query_embedding = await EmbeddingService().embed(query)
         svc = ChromaService()
-        results = await svc.query(user_id=user_id, query_text=query, n_results=_TOP_K)
+        results = await svc.query(
+            user_id=user_id,
+            query_text=query,
+            query_embedding=query_embedding,
+            n_results=_TOP_K,
+        )
         top_summary = results[0]["text"][:60] if results else "无结果"
         pb.emit_tool_use(
             "历史检索（ChromaDB）",
