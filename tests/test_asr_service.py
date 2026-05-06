@@ -24,7 +24,7 @@ async def test_transcribe_voice_message_pipeline() -> None:
     result = await service.transcribe_voice_message("om_msg_1", "fk_1")
 
     assert result == "你好"
-    feishu.download_message_resource.assert_awaited_once_with("om_msg_1", "fk_1", type_="audio")
+    feishu.download_message_resource.assert_awaited_once_with("om_msg_1", "fk_1", type_="file")
     # Feishu opus voice messages → ogg format for Volcengine v3
     asr.transcribe.assert_awaited_once_with(b"audio-bytes", audio_format="ogg")
 

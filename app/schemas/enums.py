@@ -14,6 +14,7 @@ class TaskType(StrEnum):
     create_new = "create_new"
     modify_existing = "modify_existing"
     query_only = "query_only"
+    chat = "chat"  # greeting / chitchat — no document planning needed
 
 
 class OutputFormat(StrEnum):
