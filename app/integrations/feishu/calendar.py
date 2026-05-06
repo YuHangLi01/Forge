@@ -118,7 +118,7 @@ class FeishuCalendarClient:
             from lark_oapi.api.calendar.v4 import ListCalendarRequest
 
             option = lark.RequestOption.builder().user_access_token(user_token).build()
-            cal_req = ListCalendarRequest.builder().page_size(10).build()
+            cal_req = ListCalendarRequest.builder().build()
             cal_resp = await asyncio.to_thread(
                 self._client.calendar.v4.calendar.list, cal_req, option
             )
@@ -126,8 +126,18 @@ class FeishuCalendarClient:
             raise CalendarFetchError(f"calendar list API error: {exc}") from exc
 
         if not cal_resp.success():
+            import contextlib
+
+            raw_body = ""
+            with contextlib.suppress(Exception):
+                raw_body = (
+                    cal_resp.raw.content.decode("utf-8", errors="replace")[:500]
+                    if cal_resp.raw and cal_resp.raw.content
+                    else ""
+                )
             raise CalendarFetchError(
                 f"calendar list API error code {cal_resp.code}: {cal_resp.msg}"
+                + (f" / raw={raw_body}" if raw_body else "")
             )
 
         calendar_id: str | None = None
@@ -162,7 +172,19 @@ class FeishuCalendarClient:
             raise CalendarFetchError(f"calendar API error: {exc}") from exc
 
         if not resp.success():
-            raise CalendarFetchError(f"calendar API returned error code {resp.code}: {resp.msg}")
+            import contextlib
+
+            raw_body = ""
+            with contextlib.suppress(Exception):
+                raw_body = (
+                    resp.raw.content.decode("utf-8", errors="replace")[:500]
+                    if resp.raw and resp.raw.content
+                    else ""
+                )
+            raise CalendarFetchError(
+                f"calendar API returned error code {resp.code}: {resp.msg}"
+                + (f" / raw={raw_body}" if raw_body else "")
+            )
 
         items = (resp.data.items or []) if resp.data else []
         events: list[CalendarEvent] = []
