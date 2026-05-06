@@ -34,7 +34,7 @@ def get_auth_url(user_id: str) -> str:
     params = {
         "app_id": settings.FEISHU_APP_ID,
         "redirect_uri": redirect_uri,
-        "scope": "calendar:event:readonly",
+        "scope": "calendar:calendar:readonly",
         "state": user_id,
     }
     return "https://open.feishu.cn/open-apis/authen/v1/authorize?" + urlencode(params)
@@ -78,7 +78,7 @@ async def exchange_code(code: str, state: str) -> dict[str, Any]:  # noqa: ARG00
         "refresh_token": data.refresh_token,
         "expires_at": now + timedelta(seconds=data.expires_in or 7200),
         "refresh_expires_at": now + timedelta(seconds=data.refresh_expires_in or 2592000),
-        "scope": "calendar:event:readonly",
+        "scope": "calendar:calendar:readonly",
         "open_id": data.open_id,
     }
 
@@ -203,6 +203,6 @@ async def _refresh_token(user_id: str, refresh_token_val: str) -> dict[str, Any]
         "refresh_token": data.refresh_token,
         "expires_at": now + timedelta(seconds=data.expires_in or 7200),
         "refresh_expires_at": now + timedelta(seconds=data.refresh_expires_in or 2592000),
-        "scope": "calendar:event:readonly",
+        "scope": "calendar:calendar:readonly",
         "open_id": data.open_id,
     }
