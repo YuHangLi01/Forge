@@ -84,10 +84,22 @@ class ProgressBroadcaster:
         card = clarify_card(questions=questions)
         self._send_now(card)
 
-    def emit_plan_preview(self, steps: list[dict[str, Any]], total_seconds: int) -> None:
+    def emit_plan_preview(
+        self,
+        steps: list[dict[str, Any]],
+        total_seconds: int,
+        goal: str | None = None,
+        notes_preview: list[dict[str, str]] | None = None,
+    ) -> None:
         from app.graph.cards.templates import plan_preview_card
 
-        card = plan_preview_card(steps=steps, thread_id=self.thread_id, total_seconds=total_seconds)
+        card = plan_preview_card(
+            steps=steps,
+            thread_id=self.thread_id,
+            total_seconds=total_seconds,
+            goal=goal,
+            notes_preview=notes_preview,
+        )
         self._send_now(card)
 
     def emit_tool_use(self, tool_name: str, input_summary: str, output_summary: str = "") -> None:
