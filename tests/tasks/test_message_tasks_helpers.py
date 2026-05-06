@@ -188,6 +188,12 @@ class TestResumeGraphAsync:
         with (
             patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph),
             patch("app.tasks.message_tasks._clear_active_task"),
+            patch(
+                "app.services.task_lock.TaskLock.acquire",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.services.task_lock.TaskLock.release", new_callable=AsyncMock),
         ):
             result = await _resume_graph_async("t1", "")
         assert result["status"] == "completed"
@@ -607,6 +613,12 @@ class TestHandleLegoText:
             patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph),
             patch("app.db.engine.get_session", return_value=mock_session_ctx),
             patch("app.repositories.task_repo.create_task", new_callable=AsyncMock),
+            patch(
+                "app.services.task_lock.TaskLock.acquire",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.services.task_lock.TaskLock.release", new_callable=AsyncMock),
         ):
             result = await _handle_lego_text(msg, ["C", "D"])
         assert result["status"] == "completed"
@@ -629,6 +641,12 @@ class TestHandleLegoText:
             patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph),
             patch("app.db.engine.get_session", return_value=mock_session_ctx),
             patch("app.repositories.task_repo.create_task", new_callable=AsyncMock),
+            patch(
+                "app.services.task_lock.TaskLock.acquire",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.services.task_lock.TaskLock.release", new_callable=AsyncMock),
         ):
             result = await _handle_lego_text(msg, ["C"])
         assert result["status"] == "completed"
@@ -651,6 +669,12 @@ class TestHandleLegoText:
             patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph),
             patch("app.db.engine.get_session", return_value=mock_session_ctx),
             patch("app.repositories.task_repo.create_task", new_callable=AsyncMock),
+            patch(
+                "app.services.task_lock.TaskLock.acquire",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.services.task_lock.TaskLock.release", new_callable=AsyncMock),
         ):
             result = await _handle_lego_text(msg, ["D"])
         assert result["status"] == "error"
@@ -668,6 +692,12 @@ class TestHandleLegoText:
         with (
             patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph),
             patch("app.db.engine.get_session", side_effect=RuntimeError("db down")),
+            patch(
+                "app.services.task_lock.TaskLock.acquire",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.services.task_lock.TaskLock.release", new_callable=AsyncMock),
         ):
             result = await _handle_lego_text(msg, ["C"])
         assert result["status"] == "completed"
@@ -690,6 +720,12 @@ class TestHandleLegoText:
             patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph),
             patch("app.db.engine.get_session", return_value=mock_session_ctx),
             patch("app.repositories.task_repo.create_task", new_callable=AsyncMock),
+            patch(
+                "app.services.task_lock.TaskLock.acquire",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.services.task_lock.TaskLock.release", new_callable=AsyncMock),
         ):
             result = await _handle_lego_text(msg, [])
         assert result["status"] == "completed"
