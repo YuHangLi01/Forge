@@ -57,5 +57,7 @@ for i in 1 2 3 4 5; do
 done
 
 echo "==> [deploy] healthz FAILED" >&2
-sudo journalctl -u forge-api -n 50 --no-pager >&2 || true
+SINCE=$(date -d "120 seconds ago" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -v-120S "+%Y-%m-%d %H:%M:%S")
+sudo journalctl -u forge-api --since "$SINCE" --no-pager >&2 || \
+  sudo journalctl -u forge-api -n 200 --no-pager >&2 || true
 exit 1
