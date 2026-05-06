@@ -127,59 +127,94 @@ class FeishuCalendarClient:
             end_human=datetime.fromtimestamp(int(end_ts), _BEIJING_TZ).isoformat(),
         )
 
-        # Step 1: get the user's primary calendar ID using user token
+        import lark_oapi as lark
+
+        option = lark.RequestOption.builder().user_access_token(user_token).build()
+
+        # Step 1a: try /calendars/primary first — auto-subscribes the user
+        # to their personal primary calendar and returns its calendar_id.
+        # The /calendars/list endpoint often returns only shared/group
+        # calendars and may miss the user's actual personal calendar.
+        calendar_id: str | None = None
         try:
-            import lark_oapi as lark
-            from lark_oapi.api.calendar.v4 import ListCalendarRequest
+            from lark_oapi.api.calendar.v4 import PrimaryCalendarRequest
 
-            option = lark.RequestOption.builder().user_access_token(user_token).build()
-            cal_req = ListCalendarRequest.builder().build()
-            cal_resp = await asyncio.to_thread(
-                self._client.calendar.v4.calendar.list, cal_req, option
+            pri_req = PrimaryCalendarRequest.builder().build()
+            pri_resp = await asyncio.to_thread(
+                self._client.calendar.v4.calendar.primary, pri_req, option
             )
-        except Exception as exc:
-            raise CalendarFetchError(f"calendar list API error: {exc}") from exc
-
-        if not cal_resp.success():
-            import contextlib
-
-            raw_body = ""
-            with contextlib.suppress(Exception):
-                raw_body = (
-                    cal_resp.raw.content.decode("utf-8", errors="replace")[:500]
-                    if cal_resp.raw and cal_resp.raw.content
-                    else ""
+            if pri_resp.success() and pri_resp.data:
+                cal_list = getattr(pri_resp.data, "calendars", None)
+                if isinstance(cal_list, list) and cal_list:
+                    first = cal_list[0]
+                    cal_obj = getattr(first, "calendar", None)
+                    if cal_obj is not None:
+                        calendar_id = getattr(cal_obj, "calendar_id", None)
+                logger.info(
+                    "calendar_primary_resolved",
+                    calendar_id=calendar_id,
+                    list_len=len(cal_list) if isinstance(cal_list, list) else 0,
                 )
-            raise CalendarFetchError(
-                f"calendar list API error code {cal_resp.code}: {cal_resp.msg}"
-                + (f" / raw={raw_body}" if raw_body else "")
-            )
+            else:
+                logger.warning(
+                    "calendar_primary_api_unsuccessful",
+                    code=getattr(pri_resp, "code", "?"),
+                    msg=getattr(pri_resp, "msg", "?"),
+                )
+        except Exception as exc:
+            logger.warning("calendar_primary_fetch_failed", error=str(exc))
 
-        calendars = (cal_resp.data.calendar_list or []) if cal_resp.data else []
-        # Prefer type=primary, then owner/writer role, in that order.
-        primary = next(
-            (c for c in calendars if getattr(c, "type", "") == "primary"),
-            None,
-        )
-        if primary is None:
+        # Step 1b (fallback): if primary endpoint didn't give us a calendar_id,
+        # list subscribed calendars and pick the best candidate.
+        if not calendar_id:
+            try:
+                from lark_oapi.api.calendar.v4 import ListCalendarRequest
+
+                cal_req = ListCalendarRequest.builder().build()
+                cal_resp = await asyncio.to_thread(
+                    self._client.calendar.v4.calendar.list, cal_req, option
+                )
+            except Exception as exc:
+                raise CalendarFetchError(f"calendar list API error: {exc}") from exc
+
+            if not cal_resp.success():
+                import contextlib
+
+                raw_body = ""
+                with contextlib.suppress(Exception):
+                    raw_body = (
+                        cal_resp.raw.content.decode("utf-8", errors="replace")[:500]
+                        if cal_resp.raw and cal_resp.raw.content
+                        else ""
+                    )
+                raise CalendarFetchError(
+                    f"calendar list API error code {cal_resp.code}: {cal_resp.msg}"
+                    + (f" / raw={raw_body}" if raw_body else "")
+                )
+
+            calendars = (cal_resp.data.calendar_list or []) if cal_resp.data else []
             primary = next(
-                (c for c in calendars if getattr(c, "role", "") in ("owner", "writer")),
+                (c for c in calendars if getattr(c, "type", "") == "primary"),
                 None,
             )
-        calendar_id = getattr(primary, "calendar_id", None) if primary else None
+            if primary is None:
+                primary = next(
+                    (c for c in calendars if getattr(c, "role", "") in ("owner", "writer")),
+                    None,
+                )
+            calendar_id = getattr(primary, "calendar_id", None) if primary else None
+            logger.info(
+                "calendar_list_fallback",
+                calendar_id=calendar_id,
+                calendar_count=len(calendars),
+                primary_type=getattr(primary, "type", "") if primary else "",
+                primary_role=getattr(primary, "role", "") if primary else "",
+            )
 
         if not calendar_id:
-            # Fallback: use user_id directly (some Feishu tenants support this)
-            calendar_id = user_id
+            calendar_id = user_id  # last-ditch fallback (rarely works)
 
-        logger.info(
-            "calendar_selected",
-            calendar_id=calendar_id,
-            calendar_count=len(calendars),
-            primary_type=getattr(primary, "type", "") if primary else "",
-            primary_role=getattr(primary, "role", "") if primary else "",
-            fallback_used=(primary is None),
-        )
+        logger.info("calendar_selected_final", calendar_id=calendar_id)
 
         # Step 2: list events in the date range
         try:

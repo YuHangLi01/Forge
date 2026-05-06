@@ -527,13 +527,17 @@ async def test_client_event_list_exception_raises() -> None:
     mock_cal.role = "owner"
     mock_cal.calendar_id = "cal1"
     mock_cal_resp.data.calendar_list = [mock_cal]
+    # /calendars/primary returns no calendars → falls through to list
+    mock_cal_resp.data.calendars = []
 
     call_count = 0
 
     async def mock_to_thread(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        if call_count == 1:
+        # call 1: primary (empty) → fall through; call 2: list (success);
+        # call 3: events (raise) — the path under test.
+        if call_count <= 2:
             return mock_cal_resp
         raise RuntimeError("event list failed")
 
