@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
+import respx
 
 from app.integrations.feishu.calendar import CalendarEvent, CalendarFetchError
 from app.services.calendar_context import format_events_for_prompt, has_time_word
@@ -304,298 +307,174 @@ def test_resolve_date_range_unknown_defaults_today() -> None:
 # ── FeishuCalendarClient error paths ──────────────────────────────────────────
 
 
+_CAL_LIST_RE = re.compile(r"https://open\.feishu\.cn/open-apis/calendar/v4/calendars(\?.*)?$")
+_EVENTS_RE = re.compile(
+    r"https://open\.feishu\.cn/open-apis/calendar/v4/calendars/[^/]+/events(\?.*)?"
+)
+_OWNED_PRIMARY_CAL = {
+    "calendar_id": "cal1",
+    "role": "owner",
+    "type": "primary",
+    "summary": "test",
+}
+
+
 @pytest.mark.asyncio
 async def test_client_raises_without_token() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.integrations.feishu.calendar import FeishuCalendarClient
 
-    mock_settings = MagicMock()
-    mock_settings.FEISHU_APP_ID = "app1"
-    mock_settings.FEISHU_APP_SECRET = "secret1"
-
-    with (
-        patch("app.config.get_settings", return_value=mock_settings),
-        patch("lark_oapi.Client") as mock_lark,
-        patch(
-            "app.integrations.feishu.oauth.get_valid_token",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
+    with patch(
+        "app.integrations.feishu.oauth.get_valid_token",
+        new_callable=AsyncMock,
+        return_value=None,
     ):
-        mock_builder = MagicMock()
-        mock_lark.builder.return_value = mock_builder
-        mock_builder.app_id.return_value = mock_builder
-        mock_builder.app_secret.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
-
         client = FeishuCalendarClient()
-        db_mock = AsyncMock()
         with pytest.raises(CalendarFetchError, match="未完成飞书日历授权"):
-            await client.get_events_around("u1", "今天", db_mock)
+            await client.get_events_around("u1", "今天", AsyncMock())
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_client_api_exception_wraps_error() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+    """Network failure on /calendars wraps into CalendarFetchError."""
+    from app.integrations.feishu.calendar import FeishuCalendarClient
 
-    mock_settings = MagicMock()
-    mock_settings.FEISHU_APP_ID = "app1"
-    mock_settings.FEISHU_APP_SECRET = "secret1"
+    respx.get(_CAL_LIST_RE).mock(side_effect=httpx.ConnectError("down"))
 
-    with (
-        patch("app.config.get_settings", return_value=mock_settings),
-        patch("lark_oapi.Client") as mock_lark,
-        patch("asyncio.to_thread", new_callable=AsyncMock, side_effect=RuntimeError("down")),
-        patch(
-            "app.integrations.feishu.oauth.get_valid_token",
-            new_callable=AsyncMock,
-            return_value="tok",
-        ),
+    with patch(
+        "app.integrations.feishu.oauth.get_valid_token",
+        new_callable=AsyncMock,
+        return_value="tok",
     ):
-        mock_builder = MagicMock()
-        mock_lark.builder.return_value = mock_builder
-        mock_builder.app_id.return_value = mock_builder
-        mock_builder.app_secret.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
-
         client = FeishuCalendarClient()
-        db_mock = AsyncMock()
         with pytest.raises(CalendarFetchError, match="calendar list API error"):
-            await client.get_events_around("u1", "今天", db_mock)
+            await client.get_events_around("u1", "今天", AsyncMock())
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_client_cal_list_failure_code_raises() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+    """Feishu returns non-zero code on /calendars → CalendarFetchError carries the code."""
+    from app.integrations.feishu.calendar import FeishuCalendarClient
 
-    mock_settings = MagicMock()
-    mock_settings.FEISHU_APP_ID = "app1"
-    mock_settings.FEISHU_APP_SECRET = "secret1"
+    respx.get(_CAL_LIST_RE).mock(
+        return_value=httpx.Response(200, json={"code": 403, "msg": "Forbidden"})
+    )
 
-    mock_resp = MagicMock()
-    mock_resp.success.return_value = False
-    mock_resp.code = 403
-    mock_resp.msg = "Forbidden"
-
-    with (
-        patch("app.config.get_settings", return_value=mock_settings),
-        patch("lark_oapi.Client") as mock_lark,
-        patch("asyncio.to_thread", new_callable=AsyncMock, return_value=mock_resp),
-        patch(
-            "app.integrations.feishu.oauth.get_valid_token",
-            new_callable=AsyncMock,
-            return_value="tok",
-        ),
+    with patch(
+        "app.integrations.feishu.oauth.get_valid_token",
+        new_callable=AsyncMock,
+        return_value="tok",
     ):
-        mock_builder = MagicMock()
-        mock_lark.builder.return_value = mock_builder
-        mock_builder.app_id.return_value = mock_builder
-        mock_builder.app_secret.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
-
         client = FeishuCalendarClient()
-        db_mock = AsyncMock()
         with pytest.raises(CalendarFetchError, match="403"):
-            await client.get_events_around("u1", "今天", db_mock)
+            await client.get_events_around("u1", "今天", AsyncMock())
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_client_success_returns_events() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.integrations.feishu.calendar import FeishuCalendarClient
 
-    mock_settings = MagicMock()
-    mock_settings.FEISHU_APP_ID = "app1"
-    mock_settings.FEISHU_APP_SECRET = "secret1"
+    respx.get(_CAL_LIST_RE).mock(
+        return_value=httpx.Response(
+            200,
+            json={"code": 0, "data": {"calendar_list": [_OWNED_PRIMARY_CAL]}},
+        )
+    )
+    respx.get(_EVENTS_RE).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "items": [
+                        {
+                            "summary": "Daily Standup",
+                            "start_time": {"timestamp": "1700000000"},
+                            "end_time": {"timestamp": "1700003600"},
+                        }
+                    ]
+                },
+            },
+        )
+    )
 
-    mock_cal_resp = MagicMock()
-    mock_cal_resp.success.return_value = True
-    mock_cal_resp.data = MagicMock()
-    mock_cal = MagicMock()
-    mock_cal.role = "owner"
-    mock_cal.calendar_id = "cal1"
-    mock_cal_resp.data.calendar_list = [mock_cal]
-
-    mock_event = MagicMock()
-    mock_event.summary = "Daily Standup"
-    mock_event.start_time.timestamp = "1700000000"
-    mock_event.end_time.timestamp = "1700003600"
-
-    mock_evt_resp = MagicMock()
-    mock_evt_resp.success.return_value = True
-    mock_evt_resp.data = MagicMock()
-    mock_evt_resp.data.items = [mock_event]
-
-    call_count = 0
-
-    async def mock_to_thread(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        return mock_cal_resp if call_count == 1 else mock_evt_resp
-
-    with (
-        patch("app.config.get_settings", return_value=mock_settings),
-        patch("lark_oapi.Client") as mock_lark,
-        patch("asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread),
-        patch(
-            "app.integrations.feishu.oauth.get_valid_token",
-            new_callable=AsyncMock,
-            return_value="tok",
-        ),
+    with patch(
+        "app.integrations.feishu.oauth.get_valid_token",
+        new_callable=AsyncMock,
+        return_value="tok",
     ):
-        mock_builder = MagicMock()
-        mock_lark.builder.return_value = mock_builder
-        mock_builder.app_id.return_value = mock_builder
-        mock_builder.app_secret.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        from app.integrations.feishu.calendar import FeishuCalendarClient
-
         client = FeishuCalendarClient()
-        db_mock = AsyncMock()
-        events = await client.get_events_around("u1", "今天", db_mock)
+        events = await client.get_events_around("u1", "今天", AsyncMock())
+
     assert len(events) == 1
     assert events[0].summary == "Daily Standup"
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_client_empty_calendar_list_raises() -> None:
     """When the user has no owned calendar, raise loudly (don't silent-fallback to user_id)."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.integrations.feishu.calendar import FeishuCalendarClient
 
-    mock_settings = MagicMock()
-    mock_settings.FEISHU_APP_ID = "app1"
-    mock_settings.FEISHU_APP_SECRET = "secret1"
+    respx.get(_CAL_LIST_RE).mock(
+        return_value=httpx.Response(200, json={"code": 0, "data": {"calendar_list": []}})
+    )
 
-    mock_cal_resp = MagicMock()
-    mock_cal_resp.success.return_value = True
-    mock_cal_resp.data = MagicMock()
-    mock_cal_resp.data.calendar_list = []
-
-    with (
-        patch("app.config.get_settings", return_value=mock_settings),
-        patch("lark_oapi.Client") as mock_lark,
-        patch("asyncio.to_thread", new_callable=AsyncMock, return_value=mock_cal_resp),
-        patch(
-            "app.integrations.feishu.oauth.get_valid_token",
-            new_callable=AsyncMock,
-            return_value="tok",
-        ),
+    with patch(
+        "app.integrations.feishu.oauth.get_valid_token",
+        new_callable=AsyncMock,
+        return_value="tok",
     ):
-        mock_builder = MagicMock()
-        mock_lark.builder.return_value = mock_builder
-        mock_builder.app_id.return_value = mock_builder
-        mock_builder.app_secret.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
-
         client = FeishuCalendarClient()
-        db_mock = AsyncMock()
         with pytest.raises(CalendarFetchError, match="role=owner"):
-            await client.get_events_around("u1", "今天", db_mock)
+            await client.get_events_around("u1", "今天", AsyncMock())
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_client_event_list_exception_raises() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.integrations.feishu.calendar import FeishuCalendarClient
 
-    mock_settings = MagicMock()
-    mock_settings.FEISHU_APP_ID = "app1"
-    mock_settings.FEISHU_APP_SECRET = "secret1"
+    respx.get(_CAL_LIST_RE).mock(
+        return_value=httpx.Response(
+            200,
+            json={"code": 0, "data": {"calendar_list": [_OWNED_PRIMARY_CAL]}},
+        )
+    )
+    respx.get(_EVENTS_RE).mock(side_effect=httpx.ConnectError("event list failed"))
 
-    mock_cal_resp = MagicMock()
-    mock_cal_resp.success.return_value = True
-    mock_cal_resp.data = MagicMock()
-    mock_cal = MagicMock()
-    mock_cal.role = "owner"
-    mock_cal.calendar_id = "cal1"
-    mock_cal_resp.data.calendar_list = [mock_cal]
-
-    call_count = 0
-
-    async def mock_to_thread(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return mock_cal_resp
-        raise RuntimeError("event list failed")
-
-    with (
-        patch("app.config.get_settings", return_value=mock_settings),
-        patch("lark_oapi.Client") as mock_lark,
-        patch("asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread),
-        patch(
-            "app.integrations.feishu.oauth.get_valid_token",
-            new_callable=AsyncMock,
-            return_value="tok",
-        ),
+    with patch(
+        "app.integrations.feishu.oauth.get_valid_token",
+        new_callable=AsyncMock,
+        return_value="tok",
     ):
-        mock_builder = MagicMock()
-        mock_lark.builder.return_value = mock_builder
-        mock_builder.app_id.return_value = mock_builder
-        mock_builder.app_secret.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
-
         client = FeishuCalendarClient()
-        db_mock = AsyncMock()
         with pytest.raises(CalendarFetchError, match="calendar API error"):
-            await client.get_events_around("u1", "今天", db_mock)
+            await client.get_events_around("u1", "今天", AsyncMock())
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_client_event_list_resp_failure_raises() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.integrations.feishu.calendar import FeishuCalendarClient
 
-    mock_settings = MagicMock()
-    mock_settings.FEISHU_APP_ID = "app1"
-    mock_settings.FEISHU_APP_SECRET = "secret1"
+    respx.get(_CAL_LIST_RE).mock(
+        return_value=httpx.Response(
+            200,
+            json={"code": 0, "data": {"calendar_list": [_OWNED_PRIMARY_CAL]}},
+        )
+    )
+    respx.get(_EVENTS_RE).mock(
+        return_value=httpx.Response(200, json={"code": 404, "msg": "Not Found"})
+    )
 
-    mock_cal_resp = MagicMock()
-    mock_cal_resp.success.return_value = True
-    mock_cal_resp.data = MagicMock()
-    mock_cal = MagicMock()
-    mock_cal.role = "owner"
-    mock_cal.calendar_id = "cal1"
-    mock_cal_resp.data.calendar_list = [mock_cal]
-
-    mock_evt_resp = MagicMock()
-    mock_evt_resp.success.return_value = False
-    mock_evt_resp.code = 404
-    mock_evt_resp.msg = "Not Found"
-
-    call_count = 0
-
-    async def mock_to_thread(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        return mock_cal_resp if call_count == 1 else mock_evt_resp
-
-    with (
-        patch("app.config.get_settings", return_value=mock_settings),
-        patch("lark_oapi.Client") as mock_lark,
-        patch("asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread),
-        patch(
-            "app.integrations.feishu.oauth.get_valid_token",
-            new_callable=AsyncMock,
-            return_value="tok",
-        ),
+    with patch(
+        "app.integrations.feishu.oauth.get_valid_token",
+        new_callable=AsyncMock,
+        return_value="tok",
     ):
-        mock_builder = MagicMock()
-        mock_lark.builder.return_value = mock_builder
-        mock_builder.app_id.return_value = mock_builder
-        mock_builder.app_secret.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
-
         client = FeishuCalendarClient()
-        db_mock = AsyncMock()
         with pytest.raises(CalendarFetchError, match="404"):
-            await client.get_events_around("u1", "今天", db_mock)
+            await client.get_events_around("u1", "今天", AsyncMock())

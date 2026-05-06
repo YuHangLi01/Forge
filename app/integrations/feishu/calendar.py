@@ -85,17 +85,11 @@ class FeishuCalendarClient:
     """
 
     def __init__(self) -> None:
-        import lark_oapi as lark
-
-        from app.config import get_settings
-
-        settings = get_settings()
-        self._client = (
-            lark.Client.builder()
-            .app_id(settings.FEISHU_APP_ID)
-            .app_secret(settings.FEISHU_APP_SECRET)
-            .build()
-        )
+        # No persistent client — get_events_around uses httpx + Bearer token
+        # directly. (The lark_oapi SDK was previously cached here but its
+        # auth handling silently swapped user_access_token for the tenant
+        # token on /calendars, which broke per-user calendar reads.)
+        pass
 
     async def get_events_around(
         self,
