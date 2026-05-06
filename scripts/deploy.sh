@@ -47,11 +47,11 @@ echo "==> [deploy] systemctl restart forge-api forge-worker"
 sudo systemctl restart forge-api
 sudo systemctl restart forge-worker
 
-echo "==> [deploy] health check"
-for i in 1 2 3 4 5; do
-  sleep 2
+echo "==> [deploy] health check (15 × 3 s = 45 s max)"
+for i in $(seq 1 15); do
+  sleep 3
   if curl --fail --silent --show-error "$HEALTH_URL" >/dev/null; then
-    echo "==> [deploy] healthz OK"
+    echo "==> [deploy] healthz OK (attempt $i)"
     exit 0
   fi
 done
