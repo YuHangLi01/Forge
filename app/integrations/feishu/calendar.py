@@ -157,12 +157,13 @@ class FeishuCalendarClient:
         try:
             from lark_oapi.api.calendar.v4 import ListCalendarEventRequest
 
+            # Feishu requires page_size >= 50; we still slice to max_events below.
             req = (
                 ListCalendarEventRequest.builder()
                 .calendar_id(calendar_id)
                 .start_time(start_ts)
                 .end_time(end_ts)
-                .page_size(max_events)
+                .page_size(max(50, max_events))
                 .build()
             )
             resp = await asyncio.to_thread(
