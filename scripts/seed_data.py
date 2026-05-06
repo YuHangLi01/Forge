@@ -126,6 +126,7 @@ async def _seed_notes(
     print(f"  Embedded in {elapsed:.2f}s", flush=True)
 
     for note, emb in zip(notes, embeddings, strict=False):
+        _require_safe_user_id(note["user_id"])
         await chroma_svc.add(
             user_id=note["user_id"],
             doc_id=f"note_{note['id']}",
