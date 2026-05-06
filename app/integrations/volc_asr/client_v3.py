@@ -107,10 +107,13 @@ class VolcASRV3Client:
             if resp.status_code != 200:
                 raise ASRError(f"volc_asr_v3 submit http {resp.status_code}: {resp.text[:200]}")
             data: dict[str, Any] = resp.json()
-            code = data.get("code")
+            # Bigmodel API wraps status under {"resp": {"code": ..., "msg": ...}}
+            resp_body: dict[str, Any] = data.get("resp") or {}
+            code = resp_body.get("code")
+            logger.debug("volc_asr_v3_submit_raw", raw=data)
             if code not in (_CODE_PROCESSING, _CODE_QUEUED):
                 raise ASRError(
-                    f"volc_asr_v3 submit rejected: code={code} msg={data.get('message')}"
+                    f"volc_asr_v3 submit rejected: code={code} msg={resp_body.get('msg')}"
                 )
             logger.info("volc_asr_v3_submitted", request_id=request_id, audio_url=audio_url)
 
@@ -121,7 +124,8 @@ class VolcASRV3Client:
                 if resp.status_code != 200:
                     raise ASRError(f"volc_asr_v3 query http {resp.status_code}: {resp.text[:200]}")
                 data = resp.json()
-                code = data.get("code")
+                resp_body = data.get("resp") or {}
+                code = resp_body.get("code")
                 if code == _CODE_SUCCESS:
                     result: dict[str, Any] = data.get("result") or {}
                     text: str = result.get("text", "")
@@ -134,6 +138,6 @@ class VolcASRV3Client:
                     return text
                 if code in (_CODE_PROCESSING, _CODE_QUEUED):
                     continue
-                raise ASRError(f"volc_asr_v3 error: code={code} msg={data.get('message')}")
+                raise ASRError(f"volc_asr_v3 error: code={code} msg={resp_body.get('msg')}")
 
         raise ASRError(f"volc_asr_v3 polling timeout after {_MAX_POLLS * _POLL_INTERVAL_SEC:.0f}s")
