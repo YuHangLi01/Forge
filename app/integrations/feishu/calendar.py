@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -127,49 +126,44 @@ class FeishuCalendarClient:
             end_human=datetime.fromtimestamp(int(end_ts), _BEIJING_TZ).isoformat(),
         )
 
-        import lark_oapi as lark
+        # Bypass lark_oapi SDK and call Feishu API directly via httpx with an
+        # explicit Bearer token. The SDK was observed to silently use the
+        # tenant_access_token (app-level) even when user_access_token was set
+        # on the RequestOption — which made /calendars return only the bot's
+        # own internal calendar (summary="办公智能协同助手") instead of the
+        # user's personal calendar (summary=user's name). curl with the same
+        # token returned the user's calendar correctly, so plain httpx works.
+        import httpx
 
-        option = lark.RequestOption.builder().user_access_token(user_token).build()
+        headers = {"Authorization": f"Bearer {user_token}"}
+        base = "https://open.feishu.cn/open-apis/calendar/v4"
 
-        # Get the user's primary calendar from /calendars (the user's actual
-        # personal calendar — type=primary, role=owner). Note: do NOT use the
-        # /calendars/primary endpoint; in some tenants it returns a shared
-        # calendar_id the user has no access_role on, which then 191002s
-        # when we try to list events.
         try:
-            from lark_oapi.api.calendar.v4 import ListCalendarRequest
-
-            cal_req = ListCalendarRequest.builder().build()
-            cal_resp = await asyncio.to_thread(
-                self._client.calendar.v4.calendar.list, cal_req, option
-            )
+            async with httpx.AsyncClient(timeout=15) as http:
+                cal_r = await http.get(
+                    f"{base}/calendars",
+                    headers=headers,
+                    params={"page_size": 50},
+                )
         except Exception as exc:
             raise CalendarFetchError(f"calendar list API error: {exc}") from exc
 
-        if not cal_resp.success():
-            import contextlib
-
-            raw_body = ""
-            with contextlib.suppress(Exception):
-                raw_body = (
-                    cal_resp.raw.content.decode("utf-8", errors="replace")[:500]
-                    if cal_resp.raw and cal_resp.raw.content
-                    else ""
-                )
+        cal_body = cal_r.json() if cal_r.content else {}
+        if cal_body.get("code", -1) != 0:
             raise CalendarFetchError(
-                f"calendar list API error code {cal_resp.code}: {cal_resp.msg}"
-                + (f" / raw={raw_body}" if raw_body else "")
+                f"calendar list API error code {cal_body.get('code')}: "
+                f"{cal_body.get('msg')} / raw={str(cal_body)[:500]}"
             )
 
-        calendars = (cal_resp.data.calendar_list or []) if cal_resp.data else []
-        # Strict filter: must be role=owner so the events endpoint will accept
-        # us. Prefer type=primary among owned calendars.
-        owned = [c for c in calendars if getattr(c, "role", "") == "owner"]
+        calendars = (cal_body.get("data") or {}).get("calendar_list") or []
+        # Strict filter: must be role=owner so the events endpoint will accept us.
+        # Prefer type=primary among owned calendars.
+        owned = [c for c in calendars if c.get("role") == "owner"]
         primary = next(
-            (c for c in owned if getattr(c, "type", "") == "primary"),
+            (c for c in owned if c.get("type") == "primary"),
             owned[0] if owned else None,
         )
-        calendar_id = getattr(primary, "calendar_id", None) if primary else None
+        calendar_id = primary.get("calendar_id") if primary else None
 
         if not calendar_id:
             raise CalendarFetchError("用户名下没有可访问的主日历（role=owner）")
@@ -179,58 +173,46 @@ class FeishuCalendarClient:
             calendar_id=calendar_id,
             total_calendars=len(calendars),
             owned_count=len(owned),
-            primary_summary=getattr(primary, "summary", "") if primary else "",
+            primary_summary=primary.get("summary", "") if primary else "",
         )
 
-        # Step 2: list events in the date range
+        # Step 2: list events in the date range (page_size must be >= 50)
         try:
-            from lark_oapi.api.calendar.v4 import ListCalendarEventRequest
-
-            # Feishu requires page_size >= 50; we still slice to max_events below.
-            req = (
-                ListCalendarEventRequest.builder()
-                .calendar_id(calendar_id)
-                .start_time(start_ts)
-                .end_time(end_ts)
-                .page_size(max(50, max_events))
-                .build()
-            )
-            resp = await asyncio.to_thread(
-                self._client.calendar.v4.calendar_event.list, req, option
-            )
+            async with httpx.AsyncClient(timeout=15) as http:
+                evt_r = await http.get(
+                    f"{base}/calendars/{calendar_id}/events",
+                    headers=headers,
+                    params={
+                        "start_time": start_ts,
+                        "end_time": end_ts,
+                        "page_size": max(50, max_events),
+                    },
+                )
         except Exception as exc:
             raise CalendarFetchError(f"calendar API error: {exc}") from exc
 
-        if not resp.success():
-            import contextlib
-
-            raw_body = ""
-            with contextlib.suppress(Exception):
-                raw_body = (
-                    resp.raw.content.decode("utf-8", errors="replace")[:500]
-                    if resp.raw and resp.raw.content
-                    else ""
-                )
+        evt_body = evt_r.json() if evt_r.content else {}
+        if evt_body.get("code", -1) != 0:
             raise CalendarFetchError(
-                f"calendar API returned error code {resp.code}: {resp.msg}"
-                + (f" / raw={raw_body}" if raw_body else "")
+                f"calendar API returned error code {evt_body.get('code')}: "
+                f"{evt_body.get('msg')} / raw={str(evt_body)[:500]}"
             )
 
-        items = (resp.data.items or []) if resp.data else []
+        items = (evt_body.get("data") or {}).get("items") or []
         logger.info(
             "calendar_events_fetched",
             calendar_id=calendar_id,
             raw_items_count=len(items),
             window=f"{start_ts}->{end_ts}",
-            sample_summaries=[getattr(it, "summary", "") for it in items[:3]],
+            sample_summaries=[it.get("summary", "") for it in items[:3]],
         )
         events: list[CalendarEvent] = []
         for item in items[:max_events]:
             events.append(
                 CalendarEvent(
-                    summary=item.summary or "(无标题)",
-                    start_time=getattr(item.start_time, "timestamp", ""),
-                    end_time=getattr(item.end_time, "timestamp", ""),
+                    summary=item.get("summary") or "(无标题)",
+                    start_time=(item.get("start_time") or {}).get("timestamp", ""),
+                    end_time=(item.get("end_time") or {}).get("timestamp", ""),
                 )
             )
         return events
