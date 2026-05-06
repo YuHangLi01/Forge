@@ -19,12 +19,12 @@ logger = structlog.get_logger(__name__)
 _EMBEDDING_DIM = 768  # bge-base-zh-v1.5
 
 
-def _get_embedding(text: str) -> list[float]:
+async def _get_embedding(text: str) -> list[float]:
     """Return a text embedding using the project's local bge model."""
     try:
-        from app.services.embedding_service import get_embedding
+        from app.services.embedding_service import EmbeddingService
 
-        return get_embedding(text)
+        return await EmbeddingService().embed(text)
     except Exception:
         # Fall back to a zero vector when the embedding model is unavailable.
         logger.warning("artifact_indexer_embedding_failed", text_len=len(text))
@@ -145,7 +145,7 @@ class ArtifactIndexer:
         success = 0
         for chunk_id, text, metadata in chunks:
             try:
-                embedding = _get_embedding(text)
+                embedding = await _get_embedding(text)
                 await svc.add(
                     user_id=user_id,
                     doc_id=chunk_id,

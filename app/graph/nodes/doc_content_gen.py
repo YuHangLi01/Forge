@@ -16,7 +16,7 @@ logger = structlog.get_logger(__name__)
 _STOPWORDS = {"的", "了", "在", "是", "和", "有", "也", "都", "到", "为", "对", "与"}
 
 
-def _compute_quality_score(full_md: str, context: list[dict]) -> float:
+def _compute_quality_score(full_md: str, context: list[dict[str, Any]]) -> float:
     """Compute keyword overlap between retrieved context and generated content."""
     if not context:
         return 1.0

@@ -72,8 +72,8 @@ class FeishuWikiClient:
             if doc_token:
                 body["obj_token"] = doc_token
 
-            def _create() -> lark.BaseResponse:  # type: ignore[name-defined]
-                return self._client.request(  # type: ignore[no-any-return]
+            def _create() -> lark.BaseResponse:
+                return self._client.request(
                     "POST",
                     f"/open-apis/wiki/v2/spaces/{self._space_id}/nodes",
                     body,

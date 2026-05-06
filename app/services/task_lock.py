@@ -68,6 +68,6 @@ class TaskLock:
             from app.config import get_settings
 
             async with aioredis.from_url(get_settings().REDIS_URL) as r:  # type: ignore[no-untyped-call]
-                await r.eval(_RELEASE_SCRIPT, 1, self.key, self._token)  # type: ignore[no-untyped-call]
+                await r.eval(_RELEASE_SCRIPT, 1, self.key, self._token)
         except Exception:
             logger.exception("task_lock_release_failed", key=self.key)
