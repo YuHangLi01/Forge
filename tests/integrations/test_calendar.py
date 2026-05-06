@@ -463,8 +463,8 @@ async def test_client_success_returns_events() -> None:
 
 
 @pytest.mark.asyncio
-async def test_client_no_calendar_fallback_to_user_id() -> None:
-    """When calendar list is empty, falls back to user_id as calendar_id."""
+async def test_client_empty_calendar_list_raises() -> None:
+    """When the user has no owned calendar, raise loudly (don't silent-fallback to user_id)."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
     mock_settings = MagicMock()
@@ -476,22 +476,10 @@ async def test_client_no_calendar_fallback_to_user_id() -> None:
     mock_cal_resp.data = MagicMock()
     mock_cal_resp.data.calendar_list = []
 
-    mock_evt_resp = MagicMock()
-    mock_evt_resp.success.return_value = True
-    mock_evt_resp.data = MagicMock()
-    mock_evt_resp.data.items = []
-
-    call_count = 0
-
-    async def mock_to_thread(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        return mock_cal_resp if call_count == 1 else mock_evt_resp
-
     with (
         patch("app.config.get_settings", return_value=mock_settings),
         patch("lark_oapi.Client") as mock_lark,
-        patch("asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread),
+        patch("asyncio.to_thread", new_callable=AsyncMock, return_value=mock_cal_resp),
         patch(
             "app.integrations.feishu.oauth.get_valid_token",
             new_callable=AsyncMock,
@@ -504,12 +492,12 @@ async def test_client_no_calendar_fallback_to_user_id() -> None:
         mock_builder.app_secret.return_value = mock_builder
         mock_builder.build.return_value = MagicMock()
 
-        from app.integrations.feishu.calendar import FeishuCalendarClient
+        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
 
         client = FeishuCalendarClient()
         db_mock = AsyncMock()
-        events = await client.get_events_around("u1", "今天", db_mock)
-    assert events == []
+        with pytest.raises(CalendarFetchError, match="role=owner"):
+            await client.get_events_around("u1", "今天", db_mock)
 
 
 @pytest.mark.asyncio
