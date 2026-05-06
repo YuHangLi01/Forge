@@ -43,10 +43,15 @@ async def prior_artifact_retrieval_node(state: dict[str, Any]) -> dict[str, Any]
     )
 
     try:
+        from app.services.embedding_service import EmbeddingService
+
+        # Embed with bge-base-zh-v1.5 (768-dim) — must match the indexed vectors.
+        query_embedding = await EmbeddingService().embed(query)
         svc = ChromaService()
         results = await svc.query(
             user_id=user_id,
             query_text=query,
+            query_embedding=query_embedding,
             n_results=_TOP_K,
             extra_where={"source": "delivered"},
         )
