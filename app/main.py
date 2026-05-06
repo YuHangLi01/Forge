@@ -19,10 +19,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     configure_logging()
 
-    # LangSmith PII protection — hide node inputs/outputs from traces
+    # LangSmith PII protection — hide node inputs/outputs from traces.
+    # Force-set so a stale .env value of "false" cannot silently disable protection.
     if settings.LANGSMITH_HIDE_INPUTS:
-        os.environ.setdefault("LANGCHAIN_HIDE_INPUTS", "true")
-        os.environ.setdefault("LANGCHAIN_HIDE_OUTPUTS", "true")
+        os.environ["LANGCHAIN_HIDE_INPUTS"] = "true"
+        os.environ["LANGCHAIN_HIDE_OUTPUTS"] = "true"
 
     redis_client: aioredis.Redis = aioredis.from_url(  # type: ignore[no-untyped-call]
         settings.REDIS_URL, decode_responses=True
@@ -52,11 +53,13 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     return JSONResponse(status_code=500, content={"code": -1, "msg": str(exc)})
 
 
+from app.api.asr_audio import router as asr_audio_router  # noqa: E402
 from app.api.health import router as health_router  # noqa: E402
 from app.api.webhook import router as webhook_router  # noqa: E402
 
 app.include_router(health_router)
 app.include_router(webhook_router, prefix="/api/v1")
+app.include_router(asr_audio_router, prefix="/api/v1")
 
 
 def get_app() -> FastAPI:

@@ -35,10 +35,18 @@ async def _handle_card_action_async(payload: dict[str, Any]) -> dict[str, Any]:
         return await _handle_task_continue(value)
     if action_kind == "checkpoint_resume":
         return await _handle_checkpoint_resume(value)
+    if action_kind == "checkpoint_cancel":
+        return await _handle_checkpoint_cancel(value)
+    if action_kind == "checkpoint_edit_doc":
+        return await _handle_checkpoint_edit_doc(value)
     if action_kind == "mod_target":
         return await _handle_mod_target(value)
     if action_kind == "lego_start":
         return await _handle_lego_start(value)
+    if action_kind == "confirm_prior_artifact":
+        return await _handle_confirm_prior_artifact(value)
+    if action_kind == "deny_prior_artifact":
+        return await _handle_deny_prior_artifact(value)
 
     logger.warning("card_action_unhandled", action_kind=action_kind)
     return {"status": "unhandled"}
@@ -112,6 +120,20 @@ async def _handle_plan_confirm(value: dict[str, Any]) -> dict[str, Any]:
     if not thread_id:
         logger.warning("plan_confirm_missing_thread_id")
         return {"status": "invalid"}
+
+    # Idempotency: prevent concurrent button clicks (multi-device) from double-dispatching.
+    try:
+        import redis.asyncio as aioredis
+
+        from app.config import get_settings
+
+        async with aioredis.from_url(get_settings().REDIS_URL) as _r:  # type: ignore[no-untyped-call]
+            acquired = await _r.set(f"task_action:{thread_id}:plan_confirm", "1", nx=True, ex=60)
+        if not acquired:
+            logger.info("plan_confirm_duplicate", thread_id=thread_id)
+            return {"status": "duplicate"}
+    except Exception:
+        logger.exception("plan_confirm_lock_failed", thread_id=thread_id)
 
     from app.graph import get_or_init_graph
 
@@ -352,6 +374,58 @@ async def _handle_mod_target(value: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error"}
 
 
+async def _handle_checkpoint_cancel(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '❌ 取消' on pause card — cancel the paused graph thread."""
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        logger.warning("checkpoint_cancel_missing_thread_id")
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+    from app.schemas.enums import TaskStatus
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        state = await graph.aget_state(config)
+        chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
+
+        await graph.aupdate_state(
+            config,
+            {"status": TaskStatus.cancelled, "pending_user_action": None, "error": "用户取消"},
+            as_node="checkpoint_control",
+        )
+        await _clear_active_task_async(chat_id, thread_id)
+        await _reply_text(thread_id, "已取消任务。如需重新生成，请重新发送消息 ✅")
+        logger.info("checkpoint_cancelled", thread_id=thread_id)
+        return {"status": "cancelled", "thread_id": thread_id}
+    except Exception:
+        logger.exception("checkpoint_cancel_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+
+async def _handle_checkpoint_edit_doc(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '✏️ 修改文档' on pause card — remind user to edit then say '继续'."""
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        logger.warning("checkpoint_edit_doc_missing_thread_id")
+        return {"status": "invalid"}
+
+    try:
+        await _reply_text(
+            thread_id,
+            "好的，任务已暂停 ⏸️\n\n"
+            "请直接在飞书文档中修改内容，完成后回到这里发送 **继续** 即可。\n"
+            "Forge 会在你确认继续后基于最新版本的文档生成后续内容。",
+        )
+        logger.info("checkpoint_edit_doc_notified", thread_id=thread_id)
+        return {"status": "notified", "thread_id": thread_id}
+    except Exception:
+        logger.exception("checkpoint_edit_doc_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+
 async def _handle_lego_start(value: dict[str, Any]) -> dict[str, Any]:
     """User selected lego scenarios — store in Redis and ask for description."""
     import json as _json
@@ -378,4 +452,66 @@ async def _handle_lego_start(value: dict[str, Any]) -> dict[str, Any]:
         return {"status": "waiting_for_text", "scenarios": scenarios}
     except Exception:
         logger.exception("lego_start_failed", chat_id=chat_id)
+        return {"status": "error"}
+
+
+async def _handle_confirm_prior_artifact(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '✅ 是的' on the prior-artifact confirmation card.
+
+    Clear the pending gate so the graph resumes into mod_intent_parser with
+    the reconstructed PPT already in state.
+    """
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        logger.warning("confirm_prior_artifact_missing_thread_id")
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        state = await graph.aget_state(config)
+        chat_id: str = (state.values or {}).get("chat_id", "") if state else ""
+
+        await graph.aupdate_state(
+            config,
+            {"pending_user_action": None},
+            as_node="prior_artifact_retrieval",
+        )
+        await _send_progress_card(thread_id, "✏️ 好的，正在准备修改历史产物…")
+
+        from app.tasks.message_tasks import resume_graph_task
+
+        resume_graph_task.delay(thread_id, chat_id)
+        logger.info("confirm_prior_artifact_dispatched", thread_id=thread_id)
+        return {"status": "dispatched", "thread_id": thread_id}
+    except Exception:
+        logger.exception("confirm_prior_artifact_failed", thread_id=thread_id)
+        return {"status": "error"}
+
+
+async def _handle_deny_prior_artifact(value: dict[str, Any]) -> dict[str, Any]:
+    """User clicked '🔄 不是' — clear state and let user re-describe."""
+    thread_id: str = value.get("thread_id", "")
+    if not thread_id:
+        return {"status": "invalid"}
+
+    from app.graph import get_or_init_graph
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        await graph.aupdate_state(
+            config,
+            {"pending_user_action": None, "ppt": None},
+            as_node="prior_artifact_retrieval",
+        )
+        await _reply_text(thread_id, "好的，请描述一下你说的是哪份材料 🔍")
+        logger.info("deny_prior_artifact_handled", thread_id=thread_id)
+        return {"status": "notified"}
+    except Exception:
+        logger.exception("deny_prior_artifact_failed", thread_id=thread_id)
         return {"status": "error"}

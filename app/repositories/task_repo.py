@@ -48,6 +48,8 @@ async def update_task_status(
     task.updated_at = datetime.now(UTC)
     if error is not None:
         task.error = error
+    if status == TaskStatus.completed and task.delivered_at is None:
+        task.delivered_at = datetime.now(UTC)
     await session.commit()
     logger.info("task_status_updated", task_id=task_id, status=status)
     return True

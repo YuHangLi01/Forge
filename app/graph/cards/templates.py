@@ -23,6 +23,7 @@ _NODE_LABELS: dict[str, str] = {
     "lego_orchestrator": "编排多场景任务",
     "checkpoint_control": "执行检查点控制",
     "clarify_resume": "处理用户补充信息",
+    "prior_artifact_retrieval": "检索历史产物",
     "error_handler": "处理错误",
 }
 
@@ -176,7 +177,7 @@ def mod_target_clarify_card(
             {
                 "tag": "markdown",
                 "content": (
-                    f"我看到你的指令可能针对文档或 PPT。" f"请确认「{scope_identifier}」是指哪个？"
+                    f"我看到你的指令可能针对文档或 PPT。请确认「{scope_identifier}」是指哪个？"
                 ),
             },
             {
@@ -225,18 +226,29 @@ def battle_report_card(
     ppt_url: str | None = None,
     ppt_title: str | None = None,
     is_partial: bool = False,
+    mention_user_ids: list[str] | None = None,
+    wiki_url: str | None = None,
 ) -> dict[str, object]:
     """Consolidated delivery card shown after all artifacts are generated."""
     header_template = "orange" if is_partial else "green"
-    header_text = "任务部分完成" if is_partial else "任务完成"
+    header_text = "任务部分完成" if is_partial else "🎉 任务完成"
 
     lines: list[str] = []
+
+    # @mention relevant contributors (Feishu markdown `<at user_id="...">` syntax)
+    if mention_user_ids:
+        at_line = " ".join(f'<at user_id="{uid}"></at>' for uid in mention_user_ids)
+        lines.append(at_line)
+        lines.append("")
+
     if doc_url:
         label = doc_title or "飞书文档"
         lines.append(f"📄 [{label}]({doc_url})")
     if ppt_url:
         label = ppt_title or "演示文稿"
         lines.append(f"📊 [{label}]({ppt_url})")
+    if wiki_url:
+        lines.append(f"📂 [知识库归档]({wiki_url})")
 
     content = "\n".join(lines) if lines else "无可用产出物"
     if is_partial:
@@ -323,6 +335,25 @@ def calendar_clarify_card(
     }
 
 
+def tool_use_card(
+    tool_name: str,
+    input_summary: str,
+    output_summary: str = "",
+) -> dict[str, object]:
+    """Progress card showing an in-flight tool call (visible Agent self-awareness)."""
+    body = f"🔧 **调用工具：{tool_name}**\n\n**输入：** {input_summary}"
+    if output_summary:
+        body += f"\n\n**返回：** {output_summary}"
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": "Agent 正在调用工具"},
+        },
+        "elements": [{"tag": "markdown", "content": body}],
+    }
+
+
 def lego_scenario_select_card(thread_id: str, chat_id: str) -> dict[str, object]:
     """Card for selecting Lego scenario combination (C=doc, D=PPT)."""
     return {
@@ -375,4 +406,62 @@ def lego_scenario_select_card(thread_id: str, chat_id: str) -> dict[str, object]
                 ],
             },
         ],
+    }
+
+
+def prior_artifact_confirm_card(
+    *,
+    title: str,
+    share_url: str,
+    slide_count: int,
+    task_id: str,
+    message_id: str,
+) -> dict[str, object]:
+    """Confirmation card shown when a previously-delivered artifact is found in ChromaDB."""
+    subtitle = f"📊 {slide_count} 页 · {title}"
+    return {
+        "type": "card",
+        "body": {
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": (
+                            f"我找到了你之前完成的任务产物：\n\n**{title}**\n\n{subtitle}"
+                            + (f"\n[打开产物]({share_url})" if share_url else "")
+                            + "\n\n你说的是这个吗？"
+                        ),
+                    },
+                },
+                {
+                    "tag": "action",
+                    "actions": [
+                        {
+                            "tag": "button",
+                            "text": {"tag": "plain_text", "content": "✅ 是的"},
+                            "type": "primary",
+                            "value": {
+                                "action": "confirm_prior_artifact",
+                                "task_id": task_id,
+                                "thread_id": message_id,
+                            },
+                        },
+                        {
+                            "tag": "button",
+                            "text": {"tag": "plain_text", "content": "🔄 不是，我说的是另一份"},
+                            "type": "default",
+                            "value": {
+                                "action": "deny_prior_artifact",
+                                "thread_id": message_id,
+                            },
+                        },
+                    ],
+                },
+            ]
+        },
+        "header": {
+            "title": {"content": "找到历史产物", "tag": "plain_text"},
+            "template": "turquoise",
+        },
     }

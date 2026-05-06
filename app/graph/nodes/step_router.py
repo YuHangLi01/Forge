@@ -41,8 +41,13 @@ def route(state: dict[str, Any]) -> str:
         _plan = state.get("plan")
         _done = set(state.get("completed_steps") or [])
         if _plan is None or _plan.next_runnable_step(_done) is None:
-            # All plan steps done — run delivery for create tasks if not yet done
-            if _task_type == TaskType.create_new and "delivery_node" not in _done:
+            # All plan steps done — run delivery for create tasks if not yet done.
+            # Skip delivery when error_handler already ran (state["error"] is set).
+            if (
+                _task_type == TaskType.create_new
+                and "delivery_node" not in _done
+                and not state.get("error")
+            ):
                 return "delivery_node"
             return END
         # Plan has more steps — fall through to plan-following logic
@@ -62,11 +67,23 @@ def route(state: dict[str, Any]) -> str:
 
     # ── Priority 3: modification path ────────────────────────────────────────
     if intent is not None and getattr(intent, "task_type", None) == TaskType.modify_existing:
+        completed = set(state.get("completed_steps") or [])
+        # Cross-session: no artifact in state yet → find the prior delivered artifact first.
+        if (
+            state.get("ppt") is None
+            and state.get("doc") is None
+            and "prior_artifact_retrieval" not in completed
+        ):
+            return "prior_artifact_retrieval"
         if state.get("mod_intent") is None:
             return "mod_intent_parser"
         mod_intent_obj = state.get("mod_intent")
         target = str(getattr(mod_intent_obj, "target", "document"))
-        return "ppt_slide_editor" if target == "presentation" else "doc_section_editor"
+        target_node = "ppt_slide_editor" if target == "presentation" else "doc_section_editor"
+        # Guard against infinite loop: if editor already ran, fall through to END.
+        if target_node in set(state.get("completed_steps") or []):
+            return END
+        return target_node
 
     # ── Priority 4a: no intent yet ───────────────────────────────────────────
     if intent is None:
@@ -95,12 +112,29 @@ def route(state: dict[str, Any]) -> str:
             return "scenario_composer"
         return "planner"
 
-    # ── Priority 4e/f: follow the plan ──────────────────────────────────────
+    # ── Priority 4e: mid-execution replanner ────────────────────────────────
+    # After ppt_structure_gen, if quality is low and replanner has not yet run,
+    # insert the replanner before the next plan step.
+    if (
+        "ppt_structure_gen" in completed
+        and "mid_execution_replanner" not in completed
+        and (state.get("quality_score") or 1.0) < 0.6
+        and plan is not None
+        and any(s.node_name == "ppt_content_gen" for s in plan.steps)
+    ):
+        return "mid_execution_replanner"
+
+    # ── Priority 4f: follow the plan ────────────────────────────────────────
     next_step = plan.next_runnable_step(completed)
     if next_step is None:
-        # Plan exhausted — run delivery for create tasks if not yet done
+        # Plan exhausted — run delivery for create tasks if not yet done.
+        # Skip delivery when error_handler already ran (state["error"] is set).
         _task_type2 = getattr(intent, "task_type", None)
-        if _task_type2 == TaskType.create_new and "delivery_node" not in completed:
+        if (
+            _task_type2 == TaskType.create_new
+            and "delivery_node" not in completed
+            and not state.get("error")
+        ):
             return "delivery_node"
         return END  # END sentinel is str-compatible at runtime
     return str(next_step.node_name)

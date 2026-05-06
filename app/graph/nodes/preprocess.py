@@ -70,7 +70,7 @@ async def preprocess_node(state: dict[str, Any]) -> dict[str, Any]:
         asr = ASRService(feishu)
         text = await asr.transcribe_voice_message(att_message_id, file_key)
         if not text:
-            raise ForgeError("ASR returned empty transcript", code=500)
+            raise ForgeError("未检测到语音内容，请重试或改用文字输入", code=400)
         logger.info("preprocess_audio_done", message_id=att_message_id, text_len=len(text))
         return {"normalized_text": text}
 

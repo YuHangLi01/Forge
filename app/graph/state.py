@@ -40,6 +40,7 @@ class AgentState(TypedDict, total=False):
     # Document generation pipeline
     doc_outline: dict[str, Any] | None  # produced by doc_structure_gen, consumed by doc_content_gen
     doc_markdown: str  # produced by doc_content_gen, consumed by feishu_doc_write
+    quality_score: float | None  # set by doc_content_gen; drives mid_execution_replanner
 
     # Outputs
     doc: DocArtifact | None
@@ -69,6 +70,7 @@ class AgentState(TypedDict, total=False):
     status: TaskStatus
     error: str | None
     retry_count: int
+    _force_tier: str | None  # injected by error_handler for LLM tier downgrade ("lite" | None)
     schema_version: str
     created_at: str
     updated_at: str

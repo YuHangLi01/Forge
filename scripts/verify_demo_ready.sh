@@ -14,7 +14,7 @@ echo ""
 FAILED=0
 
 # ── 1. Infra: PostgreSQL / Redis / ChromaDB ──────────────────────────────────
-echo ">>> [1/4] Infrastructure connectivity..."
+echo ">>> [1/5] Infrastructure connectivity..."
 if uv run python scripts/smoke-infra.py; then
     echo "[PASS] Infrastructure OK"
 else
@@ -24,7 +24,7 @@ fi
 echo ""
 
 # ── 2. Feishu API reachability ────────────────────────────────────────────────
-echo ">>> [2/4] Feishu API token..."
+echo ">>> [2/5] Feishu API token..."
 if uv run python - <<'PY'
 import asyncio, os, sys
 async def main():
@@ -48,7 +48,7 @@ fi
 echo ""
 
 # ── 3. Ruff + mypy ────────────────────────────────────────────────────────────
-echo ">>> [3/4] Static analysis..."
+echo ">>> [3/5] Static analysis..."
 if uv run ruff check . && uv run mypy app/ --ignore-missing-imports --no-error-summary; then
     echo "[PASS] Lint + type check OK"
 else
@@ -58,11 +58,28 @@ fi
 echo ""
 
 # ── 4. Test suite ─────────────────────────────────────────────────────────────
-echo ">>> [4/4] Test suite..."
-if uv run pytest --no-cov -q --tb=no -q 2>&1 | tail -3; then
+# NOTE: Do NOT pipe pytest output through another command — piping swallows
+# pytest's exit code (the right-hand side's exit code replaces it). Capture
+# output to a temp file and print the tail after inspecting the exit code.
+echo ">>> [4/5] Test suite..."
+_pytest_out="$(mktemp)"
+if uv run pytest --no-cov -q --tb=no > "$_pytest_out" 2>&1; then
+    tail -3 "$_pytest_out"
     echo "[PASS] Tests OK"
 else
+    tail -10 "$_pytest_out"
     echo "[FAIL] Test failures detected"
+    FAILED=1
+fi
+rm -f "$_pytest_out"
+echo ""
+
+# ── 5. DB migration state ─────────────────────────────────────────────────────
+echo ">>> [5/5] DB migration state..."
+if uv run alembic current 2>&1 | grep -q "(head)"; then
+    echo "[PASS] DB at migration head"
+else
+    echo "[FAIL] DB not at head — run: uv run alembic upgrade head"
     FAILED=1
 fi
 echo ""

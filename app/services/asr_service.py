@@ -1,14 +1,15 @@
 """Voice transcription service.
 
-Backend defaults to Feishu native STT (`FeishuASRClient`). The Volc client
-under `app.integrations.volc_asr` is kept as a deprecated fallback for now;
-swap the constructor argument if Feishu STT becomes unavailable.
+Uses Volcengine recording-file transcription API v3 (VolcASRV3Client) as the
+default backend. The legacy FeishuASRClient is kept in
+app/integrations/feishu_asr/ as a fallback if needed.
 """
 
 import structlog
 
+from app.exceptions import ForgeError
 from app.integrations.feishu.adapter import FeishuAdapter
-from app.integrations.feishu_asr.client import FeishuASRClient
+from app.integrations.volc_asr.client_v3 import VolcASRV3Client
 
 logger = structlog.get_logger(__name__)
 
@@ -17,25 +18,26 @@ class ASRService:
     def __init__(
         self,
         feishu: FeishuAdapter,
-        asr: FeishuASRClient | None = None,
+        asr: VolcASRV3Client | None = None,
     ) -> None:
         self._feishu = feishu
-        self._asr = asr or FeishuASRClient()
+        self._asr = asr or VolcASRV3Client()
 
     async def transcribe_voice_message(self, message_id: str, file_key: str) -> str:
-        """Download a Feishu voice message and transcribe it.
+        """Download a Feishu voice message and transcribe it via Volcengine ASR v3.
 
-        Returns the recognized text or an empty string on any failure (the
-        caller — typically `handle_message_task` — substitutes a fallback
-        prompt rather than crashing the worker).
+        Returns the recognized text (may be empty if no speech detected).
+        Raises ForgeError on download or ASR failures so the error propagates
+        to error_handler with the real cause.
         """
         try:
             audio_bytes = await self._feishu.download_message_resource(
                 message_id, file_key, type_="audio"
             )
-            text = await self._asr.transcribe(audio_bytes, audio_format="opus")
+            # Feishu voice messages use opus codec in an OGG container
+            text = await self._asr.transcribe(audio_bytes, audio_format="ogg")
             logger.info("voice_transcribed", message_id=message_id, text_len=len(text))
             return text
         except Exception as exc:
             logger.warning("asr_failed", message_id=message_id, error=str(exc))
-            return ""
+            raise ForgeError(f"语音转写失败（{exc}），请重试或改用文字输入", code=500) from exc

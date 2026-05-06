@@ -12,14 +12,15 @@ logger = structlog.get_logger(__name__)
 
 PAUSE_KEYWORDS: frozenset[str] = frozenset({"暂停", "等等", "停一下", "wait"})
 RESUME_KEYWORDS: frozenset[str] = frozenset({"继续", "接着干", "resume"})
-CANCEL_KEYWORDS: frozenset[str] = frozenset({"取消"})
+CANCEL_KEYWORDS: frozenset[str] = frozenset({"取消", "cancel"})
 
 
 def detect_control_intent(text: str) -> str | None:
     """Return 'pause', 'resume', 'cancel', or None.
 
-    Exact-word match for pause keywords to avoid false positives (e.g. "等" alone
-    does not trigger pause; only "等等" does).
+    Uses substring matching; callers in message_tasks guard with an _has_active
+    Redis check so keywords in normal instructions don't accidentally route as
+    control commands when no task is running.
     """
     stripped = text.strip()
     if any(kw in stripped for kw in PAUSE_KEYWORDS):

@@ -13,6 +13,29 @@ from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
 
+_STOPWORDS = {"的", "了", "在", "是", "和", "有", "也", "都", "到", "为", "对", "与"}
+
+
+def _compute_quality_score(full_md: str, context: list[dict[str, Any]]) -> float:
+    """Compute keyword overlap between retrieved context and generated content."""
+    if not context:
+        return 1.0
+    import re
+
+    content_lower = full_md.lower()
+    hit = 0
+    total = 0
+    for chunk in context[:5]:
+        text = chunk.get("text", "")
+        words = [w for w in re.findall(r"[一-鿿]{2,}|\w{3,}", text) if w not in _STOPWORDS]
+        for w in words[:10]:
+            total += 1
+            if w.lower() in content_lower:
+                hit += 1
+    if total == 0:
+        return 1.0
+    return hit / total
+
 
 @graph_node("doc_content_gen")
 async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -84,11 +107,19 @@ async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
 
     doc = DocArtifact(doc_id="", title=doc_title, sections=list(sections))
 
+    quality = _compute_quality_score(full_md, context)
+
     all_section_ids = [s.id for s in sections]
-    logger.info("doc_content_gen_done", n_sections=len(sections), total_chars=len(full_md))
+    logger.info(
+        "doc_content_gen_done",
+        n_sections=len(sections),
+        total_chars=len(full_md),
+        quality_score=quality,
+    )
     return {
         "doc": doc,
         "doc_markdown": full_md,
+        "quality_score": quality,
         "completed_steps": ["doc_content_gen"],
         "completed_section_ids": all_section_ids,
     }

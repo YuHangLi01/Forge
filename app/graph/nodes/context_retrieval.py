@@ -47,15 +47,21 @@ async def context_retrieval_node(state: dict[str, Any]) -> dict[str, Any]:
     try:
         from app.services.chroma_service import ChromaService
 
+        pb.emit_tool_use("历史检索（ChromaDB）", f"query={query[:30]}")
         svc = ChromaService()
         results = await svc.query(user_id=user_id, query_text=query, n_results=_TOP_K)
+        top_summary = results[0]["text"][:60] if results else "无结果"
+        pb.emit_tool_use(
+            "历史检索（ChromaDB）",
+            f"query={query[:30]}",
+            f"返回 {len(results)} 条，Top-1：{top_summary}…",
+        )
         logger.info(
             "context_retrieved",
             user_id=user_id,
             query_len=len(query),
             result_count=len(results),
         )
-        pb.update_thinking(f"检索到 {len(results)} 条相关资料")
     except Exception:
         logger.exception("context_retrieval_failed", user_id=user_id)
         results = []
