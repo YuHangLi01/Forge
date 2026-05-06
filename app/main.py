@@ -59,11 +59,13 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 from app.api.asr_audio import router as asr_audio_router  # noqa: E402
 from app.api.health import router as health_router  # noqa: E402
+from app.api.oauth import router as oauth_router  # noqa: E402
 from app.api.webhook import router as webhook_router  # noqa: E402
 
 app.include_router(health_router)
 app.include_router(webhook_router, prefix="/api/v1")
 app.include_router(asr_audio_router, prefix="/api/v1")
+app.include_router(oauth_router, prefix="/api/v1")
 
 
 def get_app() -> FastAPI:

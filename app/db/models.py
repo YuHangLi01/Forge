@@ -73,3 +73,26 @@ class EventProcessed(Base):
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+
+
+class FeishuOAuthToken(Base):
+    """Per-user Feishu OAuth 2.0 tokens for calendar access."""
+
+    __tablename__ = "feishu_oauth_tokens"
+    __table_args__ = {"schema": "forge"}
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    refresh_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scope: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    open_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )

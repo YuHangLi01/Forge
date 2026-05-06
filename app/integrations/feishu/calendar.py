@@ -6,6 +6,10 @@ import asyncio
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class CalendarFetchError(Exception):
@@ -69,9 +73,9 @@ def _resolve_date_range(date_hint: str) -> tuple[str, str]:
 class FeishuCalendarClient:
     """Read-only Feishu calendar client for fetching events near a date hint.
 
-    Requires ``FEISHU_CALENDAR_USER_TOKEN`` in settings — a user OAuth token
-    with ``calendar:event:readonly`` scope.  Callers must handle
-    ``CalendarFetchError`` and degrade gracefully when the token is absent.
+    Tokens are fetched per-user from the DB via get_valid_token(); no global
+    env token is required.  Callers must handle CalendarFetchError and degrade
+    gracefully (e.g. send an OAuth authorization link to the user).
     """
 
     def __init__(self) -> None:
@@ -80,8 +84,6 @@ class FeishuCalendarClient:
         from app.config import get_settings
 
         settings = get_settings()
-        self._user_token: str = settings.FEISHU_CALENDAR_USER_TOKEN
-        # Build an app-credential client as fallback; actual calls require user token.
         self._client = (
             lark.Client.builder()
             .app_id(settings.FEISHU_APP_ID)
@@ -90,21 +92,23 @@ class FeishuCalendarClient:
         )
 
     async def get_events_around(
-        self, user_id: str, date_hint: str, max_events: int = 5
+        self,
+        user_id: str,
+        date_hint: str,
+        db: AsyncSession,
+        max_events: int = 5,
     ) -> list[CalendarEvent]:
         """Return upcoming calendar events for *user_id* around *date_hint*.
 
-        Raises CalendarFetchError on API failures or when user token is absent.
-
-        TODO: Obtain FEISHU_CALENDAR_USER_TOKEN via OAuth 2.0 flow:
-              飞书开放平台 → 凭证与基础信息 → OAuth 2.0 → 授权码模式
-              所需 scope: calendar:event:readonly
+        Raises CalendarFetchError when the user has not authorized calendar
+        access or the token cannot be refreshed — caller should then send the
+        user an OAuth authorization link via get_auth_url().
         """
-        if not self._user_token:
-            raise CalendarFetchError(
-                "FEISHU_CALENDAR_USER_TOKEN 未配置 — "
-                "请在飞书开放平台完成 OAuth 2.0 授权并将 user_access_token 写入 .env"
-            )
+        from app.integrations.feishu.oauth import get_valid_token
+
+        user_token = await get_valid_token(user_id, db)
+        if not user_token:
+            raise CalendarFetchError(f"user {user_id} 未完成飞书日历授权")
 
         start_ts, end_ts = _resolve_date_range(date_hint)
 
@@ -113,7 +117,7 @@ class FeishuCalendarClient:
             import lark_oapi as lark
             from lark_oapi.api.calendar.v4 import ListCalendarRequest
 
-            option = lark.RequestOption.builder().user_access_token(self._user_token).build()
+            option = lark.RequestOption.builder().user_access_token(user_token).build()
             cal_req = ListCalendarRequest.builder().page_size(10).build()
             cal_resp = await asyncio.to_thread(
                 self._client.calendar.v4.calendar.list, cal_req, option
