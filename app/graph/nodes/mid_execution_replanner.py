@@ -62,12 +62,27 @@ async def mid_execution_replanner_node(state: dict[str, Any]) -> dict[str, Any]:
     )
 
     llm = LLMService()
+    pb.emit_tool_use(
+        "运行时决策（豆包 Pro）",
+        f"已生成节点的产物自评 / unused_chunk={unused_context[:50]}",
+    )
     try:
         decision: ReplanDecision = await llm.structured(prompt, ReplanDecision, tier="lite")
     except Exception:
         logger.exception("mid_execution_replanner_llm_failed")
+        pb.emit_tool_use(
+            "运行时决策（豆包 Pro）",
+            "已生成节点的产物自评",
+            "调用失败，保持原计划",
+        )
         pb.update_thinking("⚠️ 重规划判断失败，保持原PPT大纲。")
         return {"completed_steps": ["mid_execution_replanner"]}
+
+    pb.emit_tool_use(
+        "运行时决策（豆包 Pro）",
+        "已生成节点的产物自评",
+        f"决定 {'replan_remaining' if decision.should_add else '保持原计划'}",
+    )
 
     if not decision.should_add:
         logger.info("mid_execution_replanner_no_change", reason="llm_decided_no")
@@ -101,7 +116,8 @@ async def mid_execution_replanner_node(state: dict[str, Any]) -> dict[str, Any]:
         total_slides=len(updated_slides),
     )
     pb.update_thinking(
-        f"🔄 重规划：已插入补充幻灯片「{new_slide['title']}」（共 {len(updated_slides)} 页）。"
+        f"💡 我决定调整后续步骤：在 PPT 里加一页《{new_slide['title']}》"
+        f"（共 {len(updated_slides)} 页，从 {len(slides)} 页 +1）"
     )
 
     return {"ppt_brief": updated_brief, "completed_steps": ["mid_execution_replanner"]}

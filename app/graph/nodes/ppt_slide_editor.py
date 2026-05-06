@@ -189,6 +189,10 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     scope_identifier: str = getattr(mod_intent, "scope_identifier", "第1页")
     scope_type: str = getattr(mod_intent, "scope_type", "specific_slide")
+
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node(f"🎨 重新生成{scope_identifier}")
+
     if scope_type not in ("specific_slide",):
         return {
             "error": (
@@ -306,8 +310,7 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
     svc = PPTService(adapter=adapter)
     new_artifact = await svc.create_from_outline(ppt_artifact.title, slides)
 
-    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
-    label = f"✅ 已修改「{scope_identifier}」"
+    label = f"✅ 已修改「{scope_identifier}」（共享链接不变）"
     if new_artifact.share_url:
         pb.emit_artifact(label=label, url=new_artifact.share_url)
 
