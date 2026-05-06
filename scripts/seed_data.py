@@ -107,8 +107,14 @@ async def _seed_notes(
     chroma_svc: object,
     embed_svc: object,
     notes: list[dict],
+    remap_user_id: str | None = None,
 ) -> int:
-    """Embed each note as a single ChromaDB chunk (notes are already short)."""
+    """Embed each note as a single ChromaDB chunk (notes are already short).
+
+    If remap_user_id is given, every note's user_id is overridden with it
+    (and the safe-prefix check is bypassed) — useful for demoing with a
+    real Feishu user_id like c81c34g8.
+    """
     from app.services.chroma_service import ChromaService
     from app.services.embedding_service import EmbeddingService
 
@@ -126,9 +132,11 @@ async def _seed_notes(
     print(f"  Embedded in {elapsed:.2f}s", flush=True)
 
     for note, emb in zip(notes, embeddings, strict=False):
-        _require_safe_user_id(note["user_id"])
+        uid = remap_user_id or note["user_id"]
+        if remap_user_id is None:
+            _require_safe_user_id(uid)
         await chroma_svc.add(
-            user_id=note["user_id"],
+            user_id=uid,
             doc_id=f"note_{note['id']}",
             text=note["text"],
             embedding=emb,
@@ -140,12 +148,12 @@ async def _seed_notes(
                 "chunk_type": "user_note",
             },
         )
-        print(f"  Added note {note['id']} for user={note['user_id']}", flush=True)
+        print(f"  Added note {note['id']} for user={uid}", flush=True)
 
     return len(notes)
 
 
-async def _run(env: str, target_user_id: str | None) -> None:
+async def _run(env: str, target_user_id: str | None, remap_user_id: str | None) -> None:
     from app.services.chroma_service import ChromaService
     from app.services.embedding_service import EmbeddingService
 
@@ -184,7 +192,12 @@ async def _run(env: str, target_user_id: str | None) -> None:
     yaml_path = Path(__file__).parent.parent / "data" / "demo_seed.yaml"
     with yaml_path.open(encoding="utf-8") as f:
         seed = yaml.safe_load(f)
-    total_chunks += await _seed_notes(chroma_svc, embed_svc, seed.get("notes", []))
+    total_chunks += await _seed_notes(
+        chroma_svc,
+        embed_svc,
+        seed.get("notes", []),
+        remap_user_id=remap_user_id,
+    )
 
     elapsed = time.perf_counter() - t_start
     print(f"\nDone. Seeded {total_chunks} total chunks in {elapsed:.1f}s.")
@@ -196,11 +209,26 @@ def main() -> None:
     parser.add_argument(
         "--user-id",
         default=None,
-        help="Override user_id (must have demo_/dev_ prefix)",
+        help="Override user_id for meeting/outline fixtures (must have demo_/dev_ prefix)",
+    )
+    parser.add_argument(
+        "--remap-user-id",
+        default=None,
+        help=(
+            "Force every note in demo_seed.yaml to this user_id, bypassing the "
+            "demo_/dev_ prefix check. Use to demo with a real Feishu user_id "
+            "(e.g. c81c34g8) so the bot can retrieve the seeded notes for that user."
+        ),
     )
     args = parser.parse_args()
 
-    asyncio.run(_run(env=args.env, target_user_id=args.user_id))
+    asyncio.run(
+        _run(
+            env=args.env,
+            target_user_id=args.user_id,
+            remap_user_id=args.remap_user_id,
+        )
+    )
 
 
 if __name__ == "__main__":
