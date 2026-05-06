@@ -65,6 +65,10 @@ def route(state: dict[str, Any]) -> str:
 
     intent = state.get("intent")
 
+    # ── Priority 2.7: chat / greeting — skip planning entirely ───────────────
+    if intent is not None and getattr(intent, "task_type", None) == TaskType.chat:
+        return "direct_reply"
+
     # ── Priority 3: modification path ────────────────────────────────────────
     if intent is not None and getattr(intent, "task_type", None) == TaskType.modify_existing:
         completed = set(state.get("completed_steps") or [])

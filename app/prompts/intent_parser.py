@@ -12,6 +12,7 @@ PROMPT_V1 = PromptVersion(
 ## 输出字段说明
 
 - task_type: 任务类型
+  - "chat": 用户发送的是问候、感谢、闲聊，与创建/修改文档无关（如"你好"、"谢谢"、"嗨"、"早上好"）
   - "create_new": 用户希望新建文档/演示文稿/内容
   - "modify_existing": 用户希望修改已有内容（含"改""扩写""删除""更新"等关键词）
   - "query_only": 用户只是查询信息，不需要生成文档
@@ -38,10 +39,12 @@ PROMPT_V1 = PromptVersion(
 
 ## 规则
 
-1. 若消息涉及修改（"改""扩写""润色""删掉""更新"），task_type 优先选 modify_existing
-2. 纯查询（"告诉我""解释一下""什么是"）→ query_only + output_formats=["message_only"]
-3. ambiguity_score > 0.7 时必须填写 missing_info（至少 1 条）
-4. primary_goal 必须是中文，简洁描述核心诉求
+1. 问候/闲聊（"你好"、"嗨"、"谢谢"、"哈哈"等）
+   → task_type="chat", output_formats=["message_only"], ambiguity_score=0.0
+2. 若消息涉及修改（"改""扩写""润色""删掉""更新"），task_type 优先选 modify_existing
+3. 纯查询（"告诉我""解释一下""什么是"）→ query_only + output_formats=["message_only"]
+4. ambiguity_score > 0.7 时必须填写 missing_info（至少 1 条）
+5. primary_goal 必须是中文，简洁描述核心诉求
 
 ## 用户消息
 
@@ -62,6 +65,7 @@ PROMPT_V2 = PromptVersion(
 ## 输出字段说明
 
 - task_type: 任务类型
+  - "chat": 用户发送的是问候、感谢、闲聊，与创建/修改文档无关（如"你好"、"谢谢"、"嗨"、"早上好"）
   - "create_new": 用户希望新建文档/演示文稿/内容
   - "modify_existing": 用户希望修改已有内容（含"改""扩写""删除""更新"等关键词）
   - "query_only": 用户只是查询信息，不需要生成文档
@@ -95,10 +99,12 @@ PROMPT_V2 = PromptVersion(
 
 ## 规则
 
-1. 若消息涉及修改（"改""扩写""润色""删掉""更新"），task_type 优先选 modify_existing
-2. 纯查询（"告诉我""解释一下""什么是"）→ query_only + output_formats=["message_only"]
-3. ambiguity_score > 0.7 时必须填写 missing_info（至少 1 条）
-4. primary_goal 必须是中文，简洁描述核心诉求
+1. 问候/闲聊（"你好"、"嗨"、"谢谢"、"哈哈"等）
+   → task_type="chat", output_formats=["message_only"], ambiguity_score=0.0
+2. 若消息涉及修改（"改""扩写""润色""删掉""更新"），task_type 优先选 modify_existing
+3. 纯查询（"告诉我""解释一下""什么是"）→ query_only + output_formats=["message_only"]
+4. ambiguity_score > 0.7 时必须填写 missing_info（至少 1 条）
+5. primary_goal 必须是中文，简洁描述核心诉求
 
 ## 用户消息
 

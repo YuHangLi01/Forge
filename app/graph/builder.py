@@ -34,6 +34,8 @@ WORK_NODES: list[str] = [
     "mid_execution_replanner",
     # Stage 4: cross-session prior artifact lookup for modify path
     "prior_artifact_retrieval",
+    # Chat / greeting — reply directly without document planning
+    "direct_reply",
 ]
 
 # Routing/terminal nodes
@@ -68,6 +70,8 @@ _ROUTED_WORK_NODES: list[str] = [
     "mid_execution_replanner",
     # Stage 4: cross-session prior artifact lookup
     "prior_artifact_retrieval",
+    # Chat / greeting — reply directly without document planning
+    "direct_reply",
 ]
 
 # step_router can route to any of these destinations
@@ -101,6 +105,8 @@ _ROUTER_TARGETS: dict[str, str] = {
         "mid_execution_replanner",
         # Stage 4: cross-session prior artifact lookup
         "prior_artifact_retrieval",
+        # Chat / greeting
+        "direct_reply",
     ]
 }
 _ROUTER_TARGETS[END] = END
@@ -118,6 +124,7 @@ def build_graph(checkpointer: Any = None) -> Any:
     from app.graph.nodes.clarify_resume import clarify_resume_node
     from app.graph.nodes.context_retrieval import context_retrieval_node
     from app.graph.nodes.delivery_node import delivery_node_node
+    from app.graph.nodes.direct_reply import direct_reply_node
     from app.graph.nodes.doc_content_gen import doc_content_gen_node
     from app.graph.nodes.doc_section_editor import doc_section_editor_node
     from app.graph.nodes.doc_structure_gen import doc_structure_gen_node
@@ -158,6 +165,7 @@ def build_graph(checkpointer: Any = None) -> Any:
         "delivery_node": delivery_node_node,
         "mid_execution_replanner": mid_execution_replanner_node,
         "prior_artifact_retrieval": prior_artifact_retrieval_node,
+        "direct_reply": direct_reply_node,
     }
 
     graph: StateGraph[AgentState, AgentState, Any] = StateGraph(AgentState)
