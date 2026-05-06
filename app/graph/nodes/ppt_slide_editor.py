@@ -40,11 +40,17 @@ _CHART_MAX_W = 9.3
 _CHART_MAX_H = 6.5
 
 _CHART_EXTRACT_PROMPT = """\
-请从以下修改指令中提取图表数据，输出 JSON。
+请为幻灯片生成一个图表，输出 JSON。
 
-修改指令：{instruction}
+## 幻灯片上下文
+- 标题：{heading}
+- 要点：
+{bullets}
 
-输出格式（严格 JSON，不加 markdown 代码块）：
+## 修改指令
+{instruction}
+
+## 输出格式（严格 JSON，不加 markdown 代码块）
 {{
   "chart_type": "bar|line|pie",
   "title": "图表标题",
@@ -54,10 +60,14 @@ _CHART_EXTRACT_PROMPT = """\
   ]
 }}
 
-规则：
-- chart_type 只能是 bar / line / pie
-- categories 和 values 长度必须相同
-- 如果指令中没有明确的图表数据，series 填 []，categories 填 []
+## 规则
+- chart_type 只能是 bar / line / pie；按指令明确给出的类型选；指令未指定时按要点内容选最合适的
+- categories 和 values 长度必须相同（3-6 项为宜）
+- **如果指令里有明确数值**（如"A 12次 / B 8次"），严格按指令的数值填
+- **如果指令里没有具体数值**，请基于幻灯片标题和要点**合理生成示例数据**——
+  例如标题是"问题根因分析"、要点列出"用户体验/性能/兼容性"，就把这些作为
+  categories，给每项一个合理的发生次数（10-50 范围内的整数）
+- categories 务必体现幻灯片要点的分类含义，**不要返回空数组**
 - 只输出 JSON，不加任何解释
 """
 
@@ -270,7 +280,14 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
         )
     elif not layout_op and _CHART_TRIGGER_RE.search(instruction):
         try:
-            chart_prompt = _CHART_EXTRACT_PROMPT.format(instruction=instruction)
+            new_heading = updated.get("heading", target_slide.title)
+            new_bullets = updated.get("bullets") or list(target_slide.bullets)
+            bullets_for_chart = "\n".join(f"- {b}" for b in new_bullets) or "（无要点）"
+            chart_prompt = _CHART_EXTRACT_PROMPT.format(
+                heading=new_heading,
+                bullets=bullets_for_chart,
+                instruction=instruction,
+            )
             chart_raw: str = await llm.invoke(chart_prompt, tier="lite")
             stripped_chart = chart_raw.strip()
             if stripped_chart.startswith("```"):
@@ -278,15 +295,35 @@ async def ppt_slide_editor_node(state: dict[str, Any]) -> dict[str, Any]:
                 stripped_chart = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
             chart_dict: dict[str, Any] = json.loads(stripped_chart)
             extracted_series = chart_dict.get("series") or []
-            if not extracted_series:
-                # Instruction had no explicit chart data (e.g. "更新数据" with no values).
-                # Preserve existing chart rather than replacing with fabricated data.
-                logger.info("chart_extract_no_data_preserve_existing", slide_index=target_idx)
+            extracted_categories = chart_dict.get("categories") or []
+            if not extracted_series or not extracted_categories:
+                # LLM returned no usable data despite the new prompt asking for inference.
+                # Fall back to a minimal chart built from the slide's bullets so the user
+                # still sees a chart on the page.
+                fallback_categories = [b[:20] for b in new_bullets[:5]] or [
+                    "类别一",
+                    "类别二",
+                    "类别三",
+                ]
+                fallback_values = list(range(10, 10 + 5 * len(fallback_categories), 5))[
+                    : len(fallback_categories)
+                ]
+                chart_schema = ChartSchema(
+                    chart_type=chart_dict.get("chart_type", "bar"),
+                    title=chart_dict.get("title", new_heading),
+                    categories=fallback_categories,
+                    series=[ChartSeries(name="数量", values=fallback_values)],
+                )
+                logger.info(
+                    "chart_extract_used_fallback",
+                    slide_index=target_idx,
+                    n_categories=len(fallback_categories),
+                )
             else:
                 chart_schema = ChartSchema(
                     chart_type=chart_dict.get("chart_type", "bar"),
                     title=chart_dict.get("title", ""),
-                    categories=chart_dict.get("categories", []),
+                    categories=extracted_categories,
                     series=[
                         ChartSeries(name=s["name"], values=s["values"]) for s in extracted_series
                     ],
