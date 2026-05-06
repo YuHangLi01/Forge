@@ -55,7 +55,13 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         except CalendarFetchError as exc:
             calendar_context = ""
             logger.info("calendar_context_unavailable", user_id=user_id, reason=str(exc))
-            if "未完成飞书日历授权" in str(exc) and message_id:
+            unauthorized = "未完成飞书日历授权" in str(exc)
+            pb.emit_tool_use(
+                "飞书日历查询",
+                f"date_hint={normalized_text[:20]}",
+                "未授权，已发送授权链接" if unauthorized else f"调用失败：{str(exc)[:60]}",
+            )
+            if unauthorized and message_id:
                 try:
                     from app.integrations.feishu.adapter import FeishuAdapter
 
@@ -70,8 +76,13 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 except Exception:
                     logger.warning("calendar_auth_link_send_failed", user_id=user_id, exc_info=True)
 
-        except Exception:
+        except Exception as exc:
             logger.warning("calendar_context_fetch_failed", user_id=user_id, exc_info=True)
+            pb.emit_tool_use(
+                "飞书日历查询",
+                f"date_hint={normalized_text[:20]}",
+                f"调用失败：{str(exc)[:60]}",
+            )
             calendar_context = ""
 
     # Use V2 prompt when calendar context is available; fall back to V1.
