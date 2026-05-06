@@ -8,6 +8,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.doc_outline import DocOutline, DocOutlineSection
+from app.services.context_formatter import format_retrieved_context
 from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
@@ -38,7 +39,7 @@ async def doc_structure_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     primary_goal = getattr(intent, "primary_goal", "生成文档") if intent else "生成文档"
     target_audience = getattr(intent, "target_audience", None) if intent else None
     style_hint = getattr(intent, "style_hint", None) if intent else None
-    context_summary = "\n".join(c.get("text", "")[:150] for c in context[:3]) or "（无背景资料）"
+    context_summary = format_retrieved_context(context)
 
     prompt_version = get_prompt("doc_structure_gen")
     filled = prompt_version.text.format(

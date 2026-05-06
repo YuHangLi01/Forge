@@ -17,6 +17,9 @@ users:
   - user_id: dev_tester2
     display_name: "测试账号2"
     chat_id: "oc_dev_tester2_chat"
+  - user_id: demo_zhangwei
+    display_name: "张伟（产品负责人）"
+    chat_id: "oc_demo_zhangwei_chat"
 
 messages:
   - user_id: demo_alice
@@ -67,3 +70,48 @@ knowledge_base:
   - user_id: demo_bob
     doc_id: "kb_bob_q3_data"
     file: "tests/fixtures/meetings/q3_data_analysis.md"
+
+# 张伟的 7 条工作笔记 — 演示"历史笔记 → RAG → 材料生成"场景
+# 这些条目由 seed_data.py 的 _seed_notes() 直接入 ChromaDB，不分段
+notes:
+  - id: demo_msg_001
+    user_id: demo_zhangwei
+    ts: "2024-07-20T10:15:00+08:00"
+    channel: "private_to_forge"
+    text: "数据组刚出 Q3 报表，7 月中旬 DAU 出现明显下滑，最低点比 6 月均值低了 18%。初步看和那次大范围推送通知改版时间吻合，但还没有定论。需要进一步拆分渠道数据。"
+
+  - id: demo_msg_002
+    user_id: demo_zhangwei
+    ts: "2024-07-25T14:30:00+08:00"
+    channel: "private_to_forge"
+    text: "和研发核对了一下，7 月 14 日 v3.2.1 发布，同天推送策略切换到了新的「营销通知」模板。从 Mixpanel 漏斗看，通知到达率没变，但点击率从 12% 掉到了 7%，直接影响了新用户次留。"
+
+  - id: demo_msg_003
+    user_id: demo_zhangwei
+    ts: "2024-08-02T09:45:00+08:00"
+    channel: "private_to_forge"
+    text: "用户访谈做了 8 个。普遍反馈新的通知文案太「广告感」，有几个用户直接关闭了通知权限。老用户影响不大，主要是 7 月新增的这批用户次留很差，7 日留存只有 23%，去年同期是 31%。"
+
+  - id: demo_msg_004
+    user_id: demo_zhangwei
+    ts: "2024-08-08T16:00:00+08:00"
+    channel: "private_to_forge"
+    text: "已和设计、运营对齐改版方案：通知文案回归「功能提醒」风格，去掉促销话术；同时 A/B 测试三套文案，看哪个点击率恢复最快。预计下周三 v3.2.3 上线，观测期 2 周。"
+
+  - id: demo_msg_005
+    user_id: demo_zhangwei
+    ts: "2024-08-22T11:20:00+08:00"
+    channel: "private_to_forge"
+    text: "v3.2.3 上线 2 周数据出来了。通知点击率回升到 10.5%，还没完全恢复但趋势正向。次日留存从最低 19% 回到 26%。A/B 胜出方案是「行动召唤 + 个人化」组合文案，准备在 Q4 全量推。"
+
+  - id: demo_msg_006
+    user_id: demo_zhangwei
+    ts: "2024-09-05T10:00:00+08:00"
+    channel: "private_to_forge"
+    text: "VP 王总在上次一对一提醒：Q3 复盘要重点说明「为什么发版和推送策略没有联动评审」，这是个流程漏洞。需要在复盘材料里给出改进措施，比如发版前增加推送影响评估环节。"
+
+  - id: demo_msg_007
+    user_id: demo_zhangwei
+    ts: "2024-09-10T15:30:00+08:00"
+    channel: "private_to_forge"
+    text: "Q3 整体 DAU 均值比 Q2 低 8%，但 8 月底恢复势头明显，预计 Q4 可以补回来。核心结论：这次波动是「发版 + 推送策略同步上线，缺乏联动评审」导致的，已有改进措施落地。"
