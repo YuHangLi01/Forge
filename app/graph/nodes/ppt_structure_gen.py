@@ -8,6 +8,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.ppt import PPTBriefSchema, SlideBrief
+from app.services.context_formatter import format_retrieved_context
 
 logger = structlog.get_logger(__name__)
 
@@ -61,14 +62,13 @@ async def ppt_structure_gen_node(state: dict[str, Any]) -> dict[str, Any]:
         context_summary = fresh_doc_text[:2000]
     else:
         fallback = state.get("doc_markdown", "") or ""
-        context_summary = (
-            "\n".join(c.get("text", "")[:200] for c in context[:3])
-            or fallback[:2000]
-            or "（无背景资料）"
-        )
+        if context:
+            context_summary = format_retrieved_context(context)
+        else:
+            context_summary = fallback[:2000] or "（无背景资料）"
 
     # Derive a reasonable slide count from content length instead of hardcoding 0.
-    total_chars = sum(len(c.get("text", "")) for c in context[:3]) + len(
+    total_chars = sum(len(c.get("text", "")) for c in context[:5]) + len(
         fresh_doc_text or state.get("doc_markdown", "") or ""
     )
     if total_chars > 3000 or len(context) > 5:

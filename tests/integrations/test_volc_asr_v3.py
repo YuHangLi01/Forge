@@ -1,7 +1,7 @@
 """Unit tests for VolcASRV3Client HTTP response parsing.
 
 Uses respx to mock the Volcengine HTTP endpoints so no real network calls.
-Key contract: the bigmodel API wraps status under {"resp": {"code": ..., "msg": ...}};
+Key contract: the bigmodel API wraps status under {"header": {"code": ..., "message": ...}};
 our client must unwrap that layer, not look for code at the top level.
 """
 
@@ -52,22 +52,22 @@ def _mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_submit_resp_nested_code_success(
+async def test_submit_header_nested_code_success(
     client: VolcASRV3Client,
     _mock_redis: None,
 ) -> None:
-    """submit returns {"resp": {"code": 20000001, "msg": "success"}} → proceeds to poll."""
+    """submit returns {"header": {"code": 20000001, "message": "success"}} → polls to done."""
     respx.post(_SUBMIT_URL).mock(
         return_value=Response(
             200,
-            json={"resp": {"code": _CODE_PROCESSING, "msg": "success"}, "id": "req-1"},
+            json={"header": {"code": _CODE_PROCESSING, "message": "success"}, "reqid": "req-1"},
         )
     )
     respx.post(_QUERY_URL).mock(
         return_value=Response(
             200,
             json={
-                "resp": {"code": _CODE_SUCCESS, "msg": "success"},
+                "header": {"code": _CODE_SUCCESS, "message": "success"},
                 "result": {"text": "你好世界"},
             },
         )
@@ -79,11 +79,11 @@ async def test_submit_resp_nested_code_success(
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_submit_top_level_code_none_raises(
+async def test_submit_missing_header_raises_with_code_none(
     client: VolcASRV3Client,
     _mock_redis: None,
 ) -> None:
-    """If resp wrapper is missing (old flat format) → raises ASRError with code=None."""
+    """No header wrapper → code=None → ASRError."""
     respx.post(_SUBMIT_URL).mock(return_value=Response(200, json={"code": None, "message": None}))
 
     with pytest.raises(ASRError, match="submit rejected.*code=None"):
@@ -96,15 +96,15 @@ async def test_submit_rejected_non_processing_code_raises(
     client: VolcASRV3Client,
     _mock_redis: None,
 ) -> None:
-    """A non-processing code in resp → raises ASRError with the error code."""
+    """A non-processing code in header → ASRError with the error code and message."""
     respx.post(_SUBMIT_URL).mock(
         return_value=Response(
             200,
-            json={"resp": {"code": 45000001, "msg": "invalid param"}},
+            json={"header": {"code": 45000000, "message": "get resource id empty"}},
         )
     )
 
-    with pytest.raises(ASRError, match="submit rejected.*code=45000001"):
+    with pytest.raises(ASRError, match="submit rejected.*code=45000000"):
         await client.transcribe(b"audio", audio_format="ogg")
 
 
@@ -114,17 +114,17 @@ async def test_query_error_code_raises(
     client: VolcASRV3Client,
     _mock_redis: None,
 ) -> None:
-    """A non-success code during polling → raises ASRError."""
+    """A non-success code during polling → ASRError."""
     respx.post(_SUBMIT_URL).mock(
         return_value=Response(
             200,
-            json={"resp": {"code": _CODE_PROCESSING, "msg": "success"}, "id": "req-2"},
+            json={"header": {"code": _CODE_PROCESSING, "message": "success"}, "reqid": "req-2"},
         )
     )
     respx.post(_QUERY_URL).mock(
         return_value=Response(
             200,
-            json={"resp": {"code": 45000002, "msg": "audio decode error"}},
+            json={"header": {"code": 45000002, "message": "audio decode error"}},
         )
     )
 

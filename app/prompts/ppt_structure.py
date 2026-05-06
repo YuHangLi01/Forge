@@ -14,8 +14,11 @@ PROMPT_V1 = PromptVersion(
 - 目标受众：{target_audience}
 - 期望页数：{expected_slides}（0 表示由你决定，建议 8-12 页）
 
-## 检索到的背景资料摘要
+## 用户素材（可能含个人笔记/历史记录/已交付产物，请综合利用）
 {context_summary}
+
+注意：标记为 "demo_seed" 或 "conversation" 的条目是用户的原始笔记/对话片段，
+不是已完成的报告。请把它们作为素材组织成正式材料，不要直接引用原文。
 
 ## 规则
 1. 第一页必须是 cover 类型

@@ -9,6 +9,7 @@ import structlog
 
 from app.graph.nodes._decorator import graph_node
 from app.schemas.artifacts import DocArtifact, DocSection
+from app.services.context_formatter import format_retrieved_context
 from app.services.progress_broadcaster import ProgressBroadcaster
 
 logger = structlog.get_logger(__name__)
@@ -59,7 +60,7 @@ async def doc_content_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     primary_goal = getattr(intent, "primary_goal", "") if intent else ""
     target_audience = getattr(intent, "target_audience", None) if intent else None
     style_hint = getattr(intent, "style_hint", None) if intent else None
-    context_summary = "\n".join(c.get("text", "")[:150] for c in context[:3]) or "（无背景资料）"
+    context_summary = format_retrieved_context(context)
     all_titles = ", ".join(s.get("title", "") for s in section_dicts)
 
     prompt_version = get_prompt("doc_content_gen")

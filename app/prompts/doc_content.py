@@ -21,8 +21,11 @@ PROMPT_V1 = PromptVersion(
 - 目标受众：{target_audience}
 - 文档风格：{style_hint}
 
-## 背景资料参考
+## 用户素材（可能含个人笔记/历史记录/已交付产物，请综合利用）
 {context_summary}
+
+注意：标记为 "demo_seed" 或 "conversation" 的条目是用户的原始笔记/对话片段，
+不是已完成的报告。请把它们作为素材组织成正式材料，不要直接引用原文。
 
 ## 已有节标题列表（供参考，避免内容重复）
 {all_section_titles}

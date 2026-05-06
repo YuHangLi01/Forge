@@ -20,6 +20,8 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 # Ensure project root is importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -101,6 +103,48 @@ async def _seed_outline(
     return 1
 
 
+async def _seed_notes(
+    chroma_svc: object,
+    embed_svc: object,
+    notes: list[dict],
+) -> int:
+    """Embed each note as a single ChromaDB chunk (notes are already short)."""
+    from app.services.chroma_service import ChromaService
+    from app.services.embedding_service import EmbeddingService
+
+    assert isinstance(chroma_svc, ChromaService)
+    assert isinstance(embed_svc, EmbeddingService)
+
+    if not notes:
+        return 0
+
+    texts = [n["text"] for n in notes]
+    print(f"  Embedding {len(texts)} notes …", flush=True)
+    t0 = time.perf_counter()
+    embeddings = await embed_svc.embed_batch(texts)
+    elapsed = time.perf_counter() - t0
+    print(f"  Embedded in {elapsed:.2f}s", flush=True)
+
+    for note, emb in zip(notes, embeddings, strict=False):
+        _require_safe_user_id(note["user_id"])
+        await chroma_svc.add(
+            user_id=note["user_id"],
+            doc_id=f"note_{note['id']}",
+            text=note["text"],
+            embedding=emb,
+            metadata={
+                "source": "demo_seed",
+                "note_id": note["id"],
+                "ts": note.get("ts", ""),
+                "channel": note.get("channel", ""),
+                "chunk_type": "user_note",
+            },
+        )
+        print(f"  Added note {note['id']} for user={note['user_id']}", flush=True)
+
+    return len(notes)
+
+
 async def _run(env: str, target_user_id: str | None) -> None:
     from app.services.chroma_service import ChromaService
     from app.services.embedding_service import EmbeddingService
@@ -135,6 +179,12 @@ async def _run(env: str, target_user_id: str | None) -> None:
         uid = user_a if i % 2 == 1 else user_b
         doc_id = f"kb_{uid}_outline_{i:02d}"
         total_chunks += await _seed_outline(chroma_svc, embed_svc, uid, doc_id, json_path)
+
+    # Seed notes from demo_seed.yaml (Zhang Wei's personal memos for RAG demo)
+    yaml_path = Path(__file__).parent.parent / "data" / "demo_seed.yaml"
+    with yaml_path.open(encoding="utf-8") as f:
+        seed = yaml.safe_load(f)
+    total_chunks += await _seed_notes(chroma_svc, embed_svc, seed.get("notes", []))
 
     elapsed = time.perf_counter() - t_start
     print(f"\nDone. Seeded {total_chunks} total chunks in {elapsed:.1f}s.")
