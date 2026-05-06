@@ -43,10 +43,16 @@ async def prior_artifact_retrieval_node(state: dict[str, Any]) -> dict[str, Any]
     )
 
     try:
-        from app.services.embedding_service import EmbeddingService
-
         # Embed with bge-base-zh-v1.5 (768-dim) — must match the indexed vectors.
-        query_embedding = await EmbeddingService().embed(query)
+        # Separate try/except so a missing ML dep falls through to default embedder.
+        query_embedding: list[float] | None = None
+        try:
+            from app.services.embedding_service import EmbeddingService
+
+            query_embedding = await EmbeddingService().embed(query)
+        except Exception:
+            logger.warning("embedding_service_unavailable", exc_info=True)
+
         svc = ChromaService()
         results = await svc.query(
             user_id=user_id,
