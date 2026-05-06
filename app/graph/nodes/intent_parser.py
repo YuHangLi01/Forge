@@ -135,7 +135,15 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         intent = _FALLBACK_INTENT
 
     # Emit a calendar clarify card when the intent is ambiguous and multiple events exist.
-    if calendar_context and intent.ambiguity_score >= 0.7 and len(events) >= 2:
+    # Skip if user already answered a clarify round (normalized_text now carries
+    # "用户补充说明：…" via clarify_resume); re-emitting would loop forever.
+    already_clarified = "用户补充说明：" in normalized_text
+    if (
+        calendar_context
+        and intent.ambiguity_score >= 0.7
+        and len(events) >= 2
+        and not already_clarified
+    ):
         try:
             from app.graph.cards.templates import calendar_clarify_card
             from app.integrations.feishu.adapter import FeishuAdapter
