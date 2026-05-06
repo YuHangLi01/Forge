@@ -39,20 +39,39 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
     calendar_context = ""
     events: list[Any] = []
     if has_time_word(normalized_text) and user_id:
-        try:
-            from app.integrations.feishu.calendar import FeishuCalendarClient
+        from app.db.engine import get_session
+        from app.integrations.feishu.calendar import CalendarFetchError, FeishuCalendarClient
+        from app.integrations.feishu.oauth import get_auth_url
 
+        try:
             pb.emit_tool_use("飞书日历查询", f"date_hint={normalized_text[:20]}")
             client = FeishuCalendarClient()
-            events = await client.get_events_around(user_id, normalized_text)
+            async with get_session() as db:
+                events = await client.get_events_around(user_id, normalized_text, db)
             calendar_context = format_events_for_prompt(events)
-            pb.emit_tool_use(
-                "飞书日历查询",
-                f"返回 {len(events)} 个相关日程",
-            )
+            pb.emit_tool_use("飞书日历查询", f"返回 {len(events)} 个相关日程")
             logger.debug("calendar_context_fetched", event_count=len(events))
+
+        except CalendarFetchError as exc:
+            calendar_context = ""
+            logger.info("calendar_context_unavailable", user_id=user_id, reason=str(exc))
+            if "未完成飞书日历授权" in str(exc) and message_id:
+                try:
+                    from app.integrations.feishu.adapter import FeishuAdapter
+
+                    auth_url = get_auth_url(user_id)
+                    await FeishuAdapter().reply_text(
+                        message_id,
+                        "检测到您的消息涉及日程安排，请先授权 Forge 读取您的飞书日历：\n"
+                        f"{auth_url}\n"
+                        "授权后自动生效，无需重复操作。",
+                    )
+                    logger.info("calendar_auth_link_sent", user_id=user_id)
+                except Exception:
+                    logger.warning("calendar_auth_link_send_failed", user_id=user_id, exc_info=True)
+
         except Exception:
-            logger.warning("calendar_context_fetch_failed", user_id=user_id)
+            logger.warning("calendar_context_fetch_failed", user_id=user_id, exc_info=True)
             calendar_context = ""
 
     # Use V2 prompt when calendar context is available; fall back to V1.
