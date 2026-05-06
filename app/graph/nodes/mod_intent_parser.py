@@ -36,12 +36,16 @@ async def mod_intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
     import app.prompts.mod_intent_parser  # noqa: F401
     from app.prompts._versioning import get as get_prompt
     from app.services.llm_service import LLMService
+    from app.services.progress_broadcaster import ProgressBroadcaster
 
     message_id: str = state.get("message_id", "")
     normalized_text: str = state.get("normalized_text", "")
     doc = state.get("doc")
     ppt = state.get("ppt")
     modification_history: list[Any] = state.get("modification_history") or []
+
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node("✏️ 解析你的修改指令")
 
     has_doc = doc is not None
     has_ppt = ppt is not None
@@ -140,6 +144,8 @@ async def mod_intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         has_doc=has_doc,
         has_ppt=has_ppt,
     )
+    target_label = "PPT" if mod_intent.target == "presentation" else "文档"
+    pb.update_thinking(f"✏️ 我理解你想修改{target_label}的{mod_intent.scope_identifier}")
 
     # Emit clarify card when target is genuinely ambiguous
     if mod_intent.ambiguity_high and has_doc and has_ppt:

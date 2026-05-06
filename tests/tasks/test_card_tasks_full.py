@@ -210,8 +210,9 @@ class TestHandlePlanCancel:
 
         graph = _make_graph_mock()
         graph.aget_state = AsyncMock(side_effect=RuntimeError("boom"))
+        # Unique thread_id to avoid SETNX lock collision with test_successful_cancel.
         with patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph):
-            result = await _handle_plan_cancel({"thread_id": "t1"})
+            result = await _handle_plan_cancel({"thread_id": "t1-cancel-exception"})
         assert result["status"] == "error"
 
 
@@ -251,8 +252,9 @@ class TestHandlePlanReplan:
 
         graph = _make_graph_mock()
         graph.aget_state = AsyncMock(side_effect=RuntimeError("boom"))
+        # Unique thread_id to avoid SETNX lock collision with test_successful_replan.
         with patch("app.graph.get_or_init_graph", new_callable=AsyncMock, return_value=graph):
-            result = await _handle_plan_replan({"thread_id": "t1"})
+            result = await _handle_plan_replan({"thread_id": "t1-replan-exception"})
         assert result["status"] == "error"
 
 

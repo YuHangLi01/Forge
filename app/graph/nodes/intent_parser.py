@@ -55,23 +55,54 @@ async def intent_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         except CalendarFetchError as exc:
             calendar_context = ""
             logger.info("calendar_context_unavailable", user_id=user_id, reason=str(exc))
-            if "未完成飞书日历授权" in str(exc) and message_id:
+            unauthorized = "未完成飞书日历授权" in str(exc)
+            pb.emit_tool_use(
+                "飞书日历查询",
+                f"date_hint={normalized_text[:20]}",
+                (
+                    "未授权，已发送授权链接，等待授权完成…"
+                    if unauthorized
+                    else f"调用失败：{str(exc)[:60]}"
+                ),
+            )
+            if unauthorized and message_id:
                 try:
                     from app.integrations.feishu.adapter import FeishuAdapter
+                    from app.services.oauth_pause import mark_oauth_pending
+
+                    chat_id_from_state: str = state.get("chat_id", "")
+                    await mark_oauth_pending(user_id, message_id, chat_id_from_state)
 
                     auth_url = get_auth_url(user_id)
                     await FeishuAdapter().reply_text(
                         message_id,
                         "检测到您的消息涉及日程安排，请先授权 Forge 读取您的飞书日历：\n"
                         f"{auth_url}\n"
-                        "授权后自动生效，无需重复操作。",
+                        "授权完成后会自动继续处理您的请求，无需重新发送。",
                     )
                     logger.info("calendar_auth_link_sent", user_id=user_id)
+
+                    # Pause graph until OAuth callback resumes via resume_graph_task.
+                    # _FALLBACK_INTENT is a placeholder — it will be cleared by the
+                    # OAuth callback's aupdate_state(intent=None) before resume.
+                    return {
+                        "intent": _FALLBACK_INTENT,
+                        "pending_user_action": {
+                            "kind": "oauth_wait",
+                            "thread_id": message_id,
+                            "request_id": message_id,
+                        },
+                    }
                 except Exception:
                     logger.warning("calendar_auth_link_send_failed", user_id=user_id, exc_info=True)
 
-        except Exception:
+        except Exception as exc:
             logger.warning("calendar_context_fetch_failed", user_id=user_id, exc_info=True)
+            pb.emit_tool_use(
+                "飞书日历查询",
+                f"date_hint={normalized_text[:20]}",
+                f"调用失败：{str(exc)[:60]}",
+            )
             calendar_context = ""
 
     # Use V2 prompt when calendar context is available; fall back to V1.

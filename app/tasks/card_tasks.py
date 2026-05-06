@@ -168,6 +168,20 @@ async def _handle_plan_cancel(value: dict[str, Any]) -> dict[str, Any]:
         logger.warning("plan_cancel_missing_thread_id")
         return {"status": "invalid"}
 
+    # Idempotency: prevent double-cancel from rapid clicks across devices.
+    try:
+        import redis.asyncio as aioredis
+
+        from app.config import get_settings
+
+        async with aioredis.from_url(get_settings().REDIS_URL) as _r:  # type: ignore[no-untyped-call]
+            acquired = await _r.set(f"task_action:{thread_id}:plan_cancel", "1", nx=True, ex=60)
+        if not acquired:
+            logger.info("plan_cancel_duplicate", thread_id=thread_id)
+            return {"status": "duplicate"}
+    except Exception:
+        logger.exception("plan_cancel_lock_failed", thread_id=thread_id)
+
     from app.graph import get_or_init_graph
     from app.schemas.enums import TaskStatus
 
@@ -197,6 +211,20 @@ async def _handle_plan_replan(value: dict[str, Any]) -> dict[str, Any]:
     thread_id: str = value.get("thread_id", "")
     if not thread_id:
         return {"status": "invalid"}
+
+    # Idempotency: prevent double-replan from rapid clicks across devices.
+    try:
+        import redis.asyncio as aioredis
+
+        from app.config import get_settings
+
+        async with aioredis.from_url(get_settings().REDIS_URL) as _r:  # type: ignore[no-untyped-call]
+            acquired = await _r.set(f"task_action:{thread_id}:plan_replan", "1", nx=True, ex=60)
+        if not acquired:
+            logger.info("plan_replan_duplicate", thread_id=thread_id)
+            return {"status": "duplicate"}
+    except Exception:
+        logger.exception("plan_replan_lock_failed", thread_id=thread_id)
 
     from app.graph import get_or_init_graph
     from app.schemas.enums import TaskStatus

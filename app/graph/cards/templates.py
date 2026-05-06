@@ -242,6 +242,10 @@ def battle_report_card(
     is_partial: bool = False,
     mention_user_ids: list[str] | None = None,
     wiki_url: str | None = None,
+    notes_used_count: int = 0,
+    notes_summary: str = "",
+    replan_count: int = 0,
+    elapsed_seconds: int = 0,
 ) -> dict[str, object]:
     """Consolidated delivery card shown after all artifacts are generated."""
     header_template = "orange" if is_partial else "green"
@@ -263,6 +267,16 @@ def battle_report_card(
         lines.append(f"📊 [{label}]({ppt_url})")
     if wiki_url:
         lines.append(f"📂 [知识库归档]({wiki_url})")
+
+    if notes_used_count or replan_count or elapsed_seconds:
+        lines.append("")  # blank line separator
+    if notes_used_count:
+        suffix = f"：{notes_summary}" if notes_summary else ""
+        lines.append(f"💭 我引用了你 **{notes_used_count} 条**笔记{suffix}")
+    if replan_count:
+        lines.append(f"🔧 期间我自主决策：{replan_count} 次 replan")
+    if elapsed_seconds:
+        lines.append(f"⏱️ 总耗时：{elapsed_seconds} 秒")
 
     content = "\n".join(lines) if lines else "无可用产出物"
     if is_partial:

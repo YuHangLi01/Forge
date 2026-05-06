@@ -41,6 +41,8 @@ async def preprocess_node(state: dict[str, Any]) -> dict[str, Any]:
     pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
     pb.begin_node("正在处理输入")
 
+    import time
+
     if not attachments:
         # ── Branch 1: plain text ──────────────────────────────────────────────
         normalized = raw_input.strip()
@@ -54,7 +56,7 @@ async def preprocess_node(state: dict[str, Any]) -> dict[str, Any]:
 
             return {"normalized_text": normalized, "status": TaskStatus.cancelled}
 
-        return {"normalized_text": normalized}
+        return {"normalized_text": normalized, "_started_at": time.time()}
 
     attachment = attachments[0]
     att_type: str = attachment.get("type", "")
@@ -72,7 +74,7 @@ async def preprocess_node(state: dict[str, Any]) -> dict[str, Any]:
         if not text:
             raise ForgeError("未检测到语音内容，请重试或改用文字输入", code=400)
         logger.info("preprocess_audio_done", message_id=att_message_id, text_len=len(text))
-        return {"normalized_text": text}
+        return {"normalized_text": text, "_started_at": time.time()}
 
     if att_type == "file":
         # ── Branch 3: file upload → text extraction ───────────────────────────
@@ -86,7 +88,7 @@ async def preprocess_node(state: dict[str, Any]) -> dict[str, Any]:
         if not text.strip():
             raise ForgeError("Extracted file content is empty", code=400)
         logger.info("preprocess_file_done", filename=filename, text_len=len(text))
-        return {"normalized_text": text}
+        return {"normalized_text": text, "_started_at": time.time()}
 
     raise ForgeError(f"Unsupported attachment type: '{att_type}'", code=415)
 

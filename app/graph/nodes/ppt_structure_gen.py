@@ -33,6 +33,11 @@ async def ppt_structure_gen_node(state: dict[str, Any]) -> dict[str, Any]:
     import app.prompts.ppt_structure  # noqa: F401  # registers PROMPT_V1
     from app.prompts._versioning import get as get_prompt
     from app.services.llm_service import LLMService
+    from app.services.progress_broadcaster import ProgressBroadcaster
+
+    message_id: str = state.get("message_id", "")
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.begin_node("🎨 设计 PPT 大纲")
 
     intent = state.get("intent")
     context: list[dict[str, Any]] = state.get("retrieved_context") or []

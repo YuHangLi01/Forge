@@ -27,13 +27,19 @@ def _extract_mention_user_ids(retrieved_context: list[dict[str, Any]]) -> list[s
 
 @graph_node("delivery_node")
 async def delivery_node_node(state: dict[str, Any]) -> dict[str, Any]:
+    import time
+
     from app.graph.cards.templates import battle_report_card
     from app.integrations.feishu.adapter import FeishuAdapter
+    from app.services.progress_broadcaster import ProgressBroadcaster
 
     message_id: str = state.get("message_id", "")
     chat_id: str = state.get("chat_id", "")
     user_id: str = state.get("user_id", "")
     task_id: str = state.get("task_id", "")
+
+    pb = ProgressBroadcaster(message_id=message_id, thread_id=message_id)
+    pb.update_thinking("🎯 任务完成，正在归档…")
 
     doc = state.get("doc")
     ppt = state.get("ppt")
@@ -63,6 +69,7 @@ async def delivery_node_node(state: dict[str, Any]) -> dict[str, Any]:
         node_token = await wiki_client.create_node(title=title, doc_token=doc_token)
         if node_token:
             wiki_url = wiki_client.share_url(node_token)
+            pb.update_thinking("✅ 已归档到知识库")
             logger.info("delivery_wiki_archived", node_token=node_token)
     except Exception:
         logger.warning("delivery_wiki_archive_failed", exc_info=True)
@@ -85,8 +92,34 @@ async def delivery_node_node(state: dict[str, Any]) -> dict[str, Any]:
                     task_summary=summary,
                 )
             )
+            pb.update_thinking("📚 已索引到向量库")
         except Exception:
             logger.warning("delivery_artifact_indexer_failed", exc_info=True)
+
+    # ── Compute task stats for the battle report card ────────────────────────
+    notes_top3 = retrieved_context[:3]
+    notes_used_count = len(notes_top3)
+    notes_summary_parts: list[str] = []
+    for c in notes_top3:
+        meta = c.get("metadata") or {}
+        ts = str(meta.get("ts", ""))
+        try:
+            from datetime import datetime
+
+            dt = datetime.fromisoformat(ts)
+            short_date = f"{dt.month}/{dt.day}"
+        except (ValueError, TypeError):
+            short_date = ts[:10] if ts else ""
+        # Pull a couple keywords from the note text
+        snippet = (c.get("text") or "").strip().replace("\n", " ")[:14]
+        notes_summary_parts.append(f"{short_date} {snippet}".strip() if short_date else snippet)
+    notes_summary = " / ".join(p for p in notes_summary_parts if p)
+
+    replan_count = sum(
+        1 for s in (state.get("completed_steps") or []) if s == "mid_execution_replanner"
+    )
+    started_at = state.get("_started_at")
+    elapsed_seconds = int(time.time() - started_at) if isinstance(started_at, int | float) else 0
 
     # ── Build and send battle report card ────────────────────────────────────
     mention_user_ids = _extract_mention_user_ids(retrieved_context)
@@ -100,6 +133,10 @@ async def delivery_node_node(state: dict[str, Any]) -> dict[str, Any]:
             is_partial=is_partial,
             mention_user_ids=mention_user_ids or None,
             wiki_url=wiki_url,
+            notes_used_count=notes_used_count,
+            notes_summary=notes_summary,
+            replan_count=replan_count,
+            elapsed_seconds=elapsed_seconds,
         )
         try:
             adapter = FeishuAdapter()

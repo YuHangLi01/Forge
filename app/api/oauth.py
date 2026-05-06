@@ -54,11 +54,47 @@ async def feishu_oauth_callback(
     except Exception:
         logger.warning("feishu_oauth_notify_failed", user_id=user_id, exc_info=True)
 
+    try:
+        await _resume_paused_graph(user_id)
+    except Exception:
+        logger.warning("feishu_oauth_resume_failed", user_id=user_id, exc_info=True)
+
     logger.info("feishu_oauth_callback_success", user_id=user_id)
     return HTMLResponse(
         content=_page(success=True, message="授权成功！您现在可以关闭此页面。"),
         status_code=200,
     )
+
+
+async def _resume_paused_graph(user_id: str) -> None:
+    """If a graph was paused awaiting this user's calendar auth, resume it.
+
+    Pop the (thread_id, chat_id) mapping from Redis, clear the pending gate
+    plus the placeholder intent, then dispatch resume_graph_task. step_router
+    will route back to intent_parser, which now finds a valid token.
+    """
+    from app.graph import get_or_init_graph
+    from app.services.oauth_pause import pop_oauth_pending
+    from app.tasks.message_tasks import resume_graph_task
+
+    pending = await pop_oauth_pending(user_id)
+    if not pending:
+        return
+
+    thread_id = pending.get("thread_id", "")
+    chat_id = pending.get("chat_id", "")
+    if not thread_id:
+        return
+
+    graph = await get_or_init_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+    await graph.aupdate_state(
+        config,
+        {"pending_user_action": None, "intent": None},
+        as_node="step_router",
+    )
+    resume_graph_task.delay(thread_id, chat_id)
+    logger.info("feishu_oauth_paused_graph_resumed", user_id=user_id, thread_id=thread_id)
 
 
 async def _notify_user(user_id: str) -> None:
